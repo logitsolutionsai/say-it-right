@@ -32,6 +32,16 @@ def _guard_sklearn() -> None:
             iu._sklearn_available = False
 
 
+def _local_first(load, *args, **kw):
+    """`load(*args, **kw)` from the local Hugging Face cache, without asking the Hub whether the model changed (that
+    check costs several seconds per model on every start, and fails offline). Only a model that isn't cached yet is
+    downloaded."""
+    try:
+        return load(*args, local_files_only=True, **kw)
+    except (OSError, ValueError):                          # not in the cache (or only partly): fetch it
+        return load(*args, **kw)
+
+
 def _speedup(model, role: str):
     """int8 dynamic quantisation of the model's Linear layers (CPU) when the `quantize` setting asks for it: true for
     all three models, or a list of roles ("checker", "listener", "phonemes")."""
@@ -295,8 +305,9 @@ class Listener:
         from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
         name = config.voice()["listener"]
         log(f"loading listener {name} (CPU)")
-        self.proc = Wav2Vec2Processor.from_pretrained(name)
-        self.model = _speedup(Wav2Vec2ForCTC.from_pretrained(name, dtype=torch.float32).eval(), "listener")
+        self.proc = _local_first(Wav2Vec2Processor.from_pretrained, name)
+        self.model = _speedup(_local_first(Wav2Vec2ForCTC.from_pretrained, name, dtype=torch.float32).eval(),
+                              "listener")
         self.vocab = self.proc.tokenizer.get_vocab()
         self.blank = self.vocab["<pad>"]
         self.spans: list = []
@@ -355,11 +366,13 @@ class Checker:
     def __init__(self, log=_log):
         _guard_sklearn()
         import torch
-        from transformers import pipeline
+        from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
         name = config.voice()["checker"]
         log(f"loading checker {name} (CPU)")
-        self.asr = pipeline("automatic-speech-recognition", model=name, device="cpu", dtype=torch.float32)
-        self.asr.model = _speedup(self.asr.model, "checker")
+        model = _local_first(AutoModelForSpeechSeq2Seq.from_pretrained, name, dtype=torch.float32).eval()
+        proc = _local_first(AutoProcessor.from_pretrained, name)
+        self.asr = pipeline("automatic-speech-recognition", model=_speedup(model, "checker"), tokenizer=proc.tokenizer,
+                            feature_extractor=proc.feature_extractor, device="cpu")
 
     def transcribe(self, y: np.ndarray, sr: int, beams: int | None = None) -> str:
         """The transcript. `beams`: beam width (default: the `beams` setting; 1 is greedy decoding)."""

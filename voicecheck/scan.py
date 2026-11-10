@@ -22,7 +22,9 @@ _SENT_END = re.compile(r"[.!?:;]['\"”’)\]]*\s*$")
 def _tokenizer():
     try:
         from transformers import AutoTokenizer
-        return AutoTokenizer.from_pretrained(config.voice()["checker"])
+
+        from .verify import _local_first
+        return _local_first(AutoTokenizer.from_pretrained, config.voice()["checker"])
     except Exception:                                      # no model cache and no network: rarity is skipped
         return None
 

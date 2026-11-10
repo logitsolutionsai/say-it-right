@@ -43,7 +43,7 @@ def main() -> None:
         t["audio"] = str((base / t["audio"]).resolve())
     lex = sorted({str((base / t["lexicon"]).resolve()) for t in takes if t.get("lexicon")})
     lexargs = [x for p in lex for x in ("--lexicon", p)]
-    env = dict(os.environ, HF_HUB_OFFLINE="1", PYTHONIOENCODING="utf-8", VOICECHECK_PORT=str(a.port))
+    env = dict(os.environ, PYTHONIOENCODING="utf-8", VOICECHECK_PORT=str(a.port))
     if a.quantize:
         cfg = Path(tempfile.mkdtemp()) / "q.yaml"
         roles = "true" if a.quantize == "all" else "[" + ", ".join(a.quantize.split(",")) + "]"

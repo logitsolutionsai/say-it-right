@@ -238,6 +238,9 @@ What changed:
   doesn't match the script, and then it decides. Passing takes get transcribed about twice as fast. Failing takes
   pay for both passes, which is why the failing take above didn't get faster in a single process. On the 38 test
   takes, every verdict was the same as always using 5 beams.
+- **Models load from the local cache, without asking Hugging Face whether they changed.** That check cost about
+  8 s on every start (14 s to load instead of 4.5 s, measured on a fresh plugin install). Only a model that isn't
+  cached yet is downloaded, and checks also work offline.
 - **Models load once.** `vc check --batch` checks many takes per process. `vc serve` keeps the models loaded, and
   every later `vc check` uses it automatically. Loading costs about 4 s plus 1 s to start Python. The very first
   load takes up to two minutes, while 3.5 GB of models are read from disk.

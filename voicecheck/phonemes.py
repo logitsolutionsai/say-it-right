@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from . import config, ipa
-from .verify import _guard_sklearn, _log, _speedup, _to16k
+from .verify import _guard_sklearn, _local_first, _log, _speedup, _to16k
 
 _SPECIAL = {"<pad>", "<s>", "</s>", "<unk>", "|", " "}
 
@@ -71,9 +71,10 @@ class PhonemeEar:
         from transformers import Wav2Vec2FeatureExtractor, Wav2Vec2ForCTC
         name = config.voice()["phonemes"]
         log(f"loading phoneme ear {name} (CPU)")
-        self.fe = Wav2Vec2FeatureExtractor.from_pretrained(name)
-        self.model = _speedup(Wav2Vec2ForCTC.from_pretrained(name, dtype=torch.float32).eval(), "phonemes")
-        with open(hf_hub_download(name, "vocab.json"), encoding="utf-8") as f:
+        self.fe = _local_first(Wav2Vec2FeatureExtractor.from_pretrained, name)
+        self.model = _speedup(_local_first(Wav2Vec2ForCTC.from_pretrained, name, dtype=torch.float32).eval(),
+                              "phonemes")
+        with open(_local_first(hf_hub_download, name, "vocab.json"), encoding="utf-8") as f:
             vocab = json.load(f)
         self.id2ph = {i: p for p, i in vocab.items()}
         self.blank = vocab.get("<pad>", 0)
