@@ -294,6 +294,26 @@ of passing, `slips` scores the words the listener actually aligned, logs go to s
 the pitch range adapts to high voices (`PROSODY_V` 4), and torchaudio is gone. Bugs fixed here in `reference/`
 (OpenMontage's copies still have them) are listed in the commit history.
 
+## Privacy
+
+say-it-right collects nothing. It has no account, no API key and no telemetry, and logitsolutionsai receives no
+data from it. Your scripts, recordings and reports stay on your machine: every check runs locally. `vc serve`
+listens only on 127.0.0.1, so other computers can't reach it.
+
+It contacts other services only in these cases:
+
+| When | What is sent | To |
+|---|---|---|
+| Setup (`install.py`) | ordinary package downloads | PyPI, and download.pytorch.org on Linux |
+| The first time the models are needed (a check, `vc scan`, or `install.py --models`) | model downloads, once; after that they load from the local cache | Hugging Face |
+| Researching a name (`vc lookup`) | the name being looked up | Wikipedia, Wikidata, Wiktionary, Wikimedia Commons, VOA Pronounce |
+| Turning a reference recording into phones (`vc hear <url>`) | a download request for that URL | the site in the URL, usually upload.wikimedia.org |
+
+Lookup requests carry a User-Agent that names the project and its contact (the repository URL and
+logitsolutionsai@gmail.com), as Wikimedia's policy for automated tools asks. Set `VOICECHECK_CONTACT` to use your
+own contact instead. When your agent searches the web for how someone says their name, the search goes through
+the agent's own web tools, under that agent's privacy terms. Each service above has its own privacy policy.
+
 ## License
 
 [MIT](LICENSE). The models it downloads have their own licences: Whisper (MIT), the two wav2vec2 models
