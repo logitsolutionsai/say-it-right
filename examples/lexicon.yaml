@@ -1,0 +1,26 @@
+# An example lexicon: how the voice must say each word, and where that came from.
+# `say` is what a plain-text TTS reads; `ipa` is the target sound the phoneme check holds every take to.
+# A key with a capital matches case-sensitively; an all-lowercase key matches any case. See voicecheck/lexicon.py.
+
+Saoirse:
+  say: Sur-shuh
+  ipa: ˈsɜːrʃə
+  source: https://en.wikipedia.org/wiki/Saoirse_Ronan ({{IPAc-en}} and {{respell|SUR|shə}}, read 2026-11-10)
+LeCun:
+  say: Luh-kun
+  ipa: ləˈkʌn
+  source: https://en.wikipedia.org/wiki/Yann_LeCun ({{IPAc-en}} ləˈkʌn, {{respell|lə|KUN}}, read 2026-11-10)
+  note: Wikipedia also gives the French ləkœ̃; the English form is the one it lists first
+Szegedy:
+  say: Seg-eh-dee
+  ipa: ˈsɛɡɛdi
+  source: Hungarian spelling (sz = s, archaic final y = i); OpenMontage voice.yaml chose Seg-eh-dee by ear
+  note: no Wikipedia article or recording found by lookup; confirm against a talk of his if it matters
+
+# Respellings only (no IPA): the transcript and letter checks apply, not the phoneme check.
+Sergey: Sair-gay                 # OpenMontage voice.yaml, 2026-11-04
+Ioffe: Yoff-ee
+XOR: ex-or
+ReLU: rel-you
+tanh: tanch
+AI: A I                          # an acronym said as letters, not "eye"

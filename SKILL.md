@@ -1,0 +1,168 @@
+---
+name: say-it-right
+license: MIT
+description: Make AI voice-overs say every word right, especially people's names, and prove it before the audio ships. Researches how names and rare terms are really pronounced (Wikipedia/Wiktionary/Wikidata IPA and native recordings, plus web search for the person's own pronunciation), keeps them in a sourced lexicon, renders the script for the TTS engine in use (respellings, SSML phonemes, ElevenLabs/Cartesia/Kokoro/Piper inline IPA, PLS dictionaries), then checks each recorded take with three ears (Whisper, a letter model with no language model, and an IPA phoneme model) for slipped or missing words, mispronounced names, pace and tone. Use this whenever someone is making narration, a voice-over, a podcast or video voice, an audiobook, or any text-to-speech audio, asks how to pronounce a name for a TTS voice, wants a pronunciation dictionary or SSML phonemes, or wants to verify a TTS take against its script, even if they never say "pronunciation" or "check".
+---
+
+# say-it-right
+
+A TTS voice reads a script well until it meets a name ("Szegedy", "Siobhan", "Nguyen"), a number it must guess
+how to say ("1959 people"), or a word whose spelling misleads it. It doesn't warn you: Whisper's transcript of the
+take will even "correct" the mistake back to the spelling. This skill closes that gap in four moves:
+
+1. **Find** the risky words in the script.
+2. **Research** how each one is said, and record it with a source in a lexicon.
+3. **Render** the script in the syntax the user's TTS engine understands.
+4. **Check** every take, and re-record or re-spell until it passes.
+
+Everything runs from `vc.py` in this skill's folder: `${CLAUDE_SKILL_DIR}` (in agents that don't substitute it, the
+folder holding this file). Below, `vc` stands for `python "${CLAUDE_SKILL_DIR}/vc.py"`; any Python works, vc.py runs
+itself inside the skill's own environment. Results are JSON on stdout, progress on stderr; exit code 0 = passed,
+1 = a take failed a check, 2 = the command failed.
+
+## Setup (once)
+
+```bash
+python "${CLAUDE_SKILL_DIR}/install.py"          # creates the skill's .venv; ~1 minute with uv, a few without
+python "${CLAUDE_SKILL_DIR}/install.py" --check  # later: is it still installed?
+```
+
+If a command says the skill isn't installed, run the first line. The first `check` downloads Whisper small.en and
+wav2vec2 (about 2.2 GB) and the first check of a researched name adds the phoneme model (1.3 GB); add `--models` to
+install.py to download them up front. All run on the CPU.
+
+## 1. Find the words that need research
+
+```bash
+vc scan script.txt --lexicon lexicon.yaml
+```
+
+`research` lists names (capitalised mid-sentence), acronyms, mixed-case terms (PyTorch), letters outside English
+(Søren), letters glued to digits (GPT-4o), and words rare enough that the TTS will guess (several tokenizer pieces;
+this catches a name at the start of a sentence). `numbers` shows how each number could be read. Also read the
+script yourself: you will know names the heuristics miss (a common-looking word that is a surname, a brand).
+
+For an acronym, decide whether it is said as letters (A I, G P T) or as a word (NASA, ReLU), and for an ambiguous
+number either spell it out in the script ("nineteen fifty-nine") or accept that the checker tries every reading.
+
+## 2. Research each name
+
+Work from the most authoritative source down, and stop when a source is clearly authoritative:
+
+1. **The person or owner themselves**: a video or podcast where they say their own name, a "how to pronounce my
+   name" note, a name-pronunciation field on a profile, a company's own ad saying its brand. Use web search for
+   `"<name>" pronounce`, `"<name>" interview`, `how do you say <name>`.
+2. **Recordings by native speakers**: Wikidata/Lingua Libre/Commons audio (`lookup` finds them). Turn one into IPA
+   with `vc hear <url-or-file>` and compare it with what the text sources say.
+3. **Reference IPA**: Wikipedia's lead-section IPA and respelling, Voice of America's pronunciation guide,
+   Wiktionary. `vc lookup "Full Name" --context "what they are known for"` collects these, plus the
+   recordings above, from keyless public APIs in one go. Pages marked `match: "surname only"` are about someone
+   else with the same surname: useful for how the surname is said, not proof of how this person says it. Sources
+   it couldn't reach are listed in `errors`; an empty result is common (most people have no recorded
+   pronunciation anywhere), which is exactly when the web search in step 1 matters.
+4. **The language's spelling rules** (Hungarian sz = s, Irish bh = v, Polish ł = w), stated as such.
+
+Decide the *target* before writing anything down: the person's own pronunciation wins; otherwise use the
+established English form if one exists (BBC/broadcast practice: anglicise only as far as is customary), otherwise
+the native form approximated with English sounds. When the sources disagree and none is the person's own, say so
+to the user and pick the best-supported one, or ask if it matters (a guest's name on their own show does).
+`references/name-research.md` has the source details, the API calls and worked examples.
+
+Record each decision in a lexicon file, with where it came from:
+
+```yaml
+# lexicon.yaml
+Szegedy:
+  say: Seg-eh-dee          # what a plain-text TTS reads
+  ipa: ˈsɛɡɛdi             # the target sound; the phoneme check holds every take to it
+  source: Hungarian spelling (sz=s, final y=i); English-language talks say SEG-eh-dee
+Siobhan: {say: Shiv-awn, ipa: ʃɪˈvɔːn, source: "https://en.wikipedia.org/wiki/Siobhan"}
+ReLU: rel-you              # a bare respelling: no IPA, so only the transcript and letter checks apply
+AI: A I                    # an acronym said as letters
+```
+
+Always give `ipa` for a person's name: it is what lets the checker hear whether the name was said right. Get the
+respelling from the IPA with `vc respell "ʃɪˈvɔːn" --name`, which follows Wikipedia's respelling key and
+returns a few candidates (plain `Shiv-awn`, stress-marked `Shiv-AWN`, spaced); `references/respelling.md` has the key.
+
+## 3. Render the script for the engine
+
+```bash
+vc render script.txt --lexicon lexicon.yaml -f <format>
+```
+
+| Engine | Format | What it gets |
+|---|---|---|
+| Qwen3-TTS, Chatterbox, Kyutai Pocket, Gradium Phonon, Coqui XTTS, Sesame CSM, Dia, OpenAI TTS, ElevenLabs Multilingual v2 / Flash v2.5 | `text` | respellings in plain text |
+| Azure (add `--voice <name>`), Google Cloud incl. Chirp 3 HD sync, Amazon Polly (add `--bare`) | `ssml` | `<phoneme alphabet="ipa">` in US-English phones, `<sub alias>` |
+| ElevenLabs v4 | `elevenlabs` | inline `/IPA/` for researched words |
+| ElevenLabs v3 / v4 / Flash v2, Azure `<lexicon>`, Polly lexicons | `export-pls` | a PLS dictionary file to upload |
+| Cartesia Sonic 3.x | `cartesia` | `<<s\|ˈ\|ɛ\|...>>` inline IPA |
+| Kokoro | `kokoro` | `[word](/misaki phones/)` |
+| Piper | `piper` | `[[ espeak phonemes ]]` |
+
+Engine details and caveats (which ElevenLabs models ignore phonemes, Chirp's sync-only SSML, Kokoro silently
+dropping unknown symbols) are in `references/tts-engines.md`. If unsure of the engine, ask; `text` works everywhere.
+
+Keep the on-screen text and captions in the real spelling; only the voice gets the respelling.
+Azure's Dragon HD Omni voices ignore `<phoneme>`: for them render `text` (or give both files and say which is which).
+
+## 4. Check every take
+
+```bash
+vc check take.wav script.txt --lexicon lexicon.yaml          # the script as written, not the respelled text
+vc check --batch takes.json --lexicon lexicon.yaml          # many takes, models loaded once (much faster)
+```
+
+`takes.json` is a list of `{"audio": "line01.wav", "script": "The line as written."}` (or a text file of
+`audio<TAB>script` lines; paths relative to it). Check every line of a narration in one batch rather than one call
+per take: loading the models takes longer than checking a short take. When you'll record, check and re-record in
+a loop, start `vc serve` in the background once (it keeps the models loaded on 127.0.0.1:8767); every later
+`vc check` uses it automatically, about 3 s for a short take instead of 8. Each report has `timing` (seconds per
+step).
+
+The report's `passed` is true only if all of these hold, and `reasons` says which failed:
+
+- **match**: Whisper's transcript against the script, on letters (numbers compared in whichever reading fits).
+- **slips**: words the letter model (no language model, so it can't "correct" anything) can't find in the audio,
+  or that it scores low where Whisper also disagrees. Catches dropped small words ("zero [to] two hundred"),
+  substitutions Whisper smooths over ("confident and wrong" for "confident in wrong"), truncated takes.
+- **names**: each lexicon word with `ipa`, cut from the take and transcribed into phones; `heard`, `target`,
+  `score` and `diff` (= same, ~ close, ! different, - missing) show exactly what was said. Accent-level
+  differences (a dropped r, cot/caught, an American flapped d, unstressed vowel colour) don't fail it; a wrong
+  consonant, a wrong stressed vowel or a missing sound does.
+- **pace** (when `pace_syl_s` is set, or `--pace LOW HIGH`) and **tone** (when `flat` limits are set): syllables per
+  second of speech, and pitch range / stressed word / sung ending against the sentence's own drift.
+
+When a take fails:
+
+- **A name**: read `heard` against `target`. If the voice consistently says it wrong from the respelling, try the
+  next `respell` candidate, or switch to an IPA-capable format if the engine has one, and re-record that line.
+  If `heard` looks right to you and only an accent detail differs, explain that rather than loop.
+- **Slips or match**: re-record the line (TTS takes vary; a new seed usually fixes it). Repeated failure on the
+  same word means the text is hard to read aloud: respell it or reword the sentence, with the user's agreement.
+- **Pace or tone**: adjust the engine's speed or style instructions, then re-record.
+
+Give each line a few attempts (three to five), then stop and report what still fails, with the `heard` phones and
+`diff`, so a person can listen. Never claim a take passed without running `check` on it.
+
+## Report back
+
+Tell the user, briefly: which words you researched and the source for each (and any you couldn't confirm), the
+lexicon file you wrote, the render format used, and per line whether it passed, with the reasons for any that
+didn't. The lexicon is reusable: next time, `scan` will show those words as already covered.
+
+## Limits worth stating
+
+- English scripts and voices (whisper-small.en and the letter model are English-only; the phoneme model is
+  multilingual, so foreign names inside English narration are fine).
+- The name check needs `ipa` in the lexicon; it's calibrated on 32 takes (8 names, 2 voices) and will mishear
+  some rare sounds. Treat a failure as "listen to this", with the diff saying where.
+- Rare names are where every model is weakest, which is why the research step matters more than the check.
+
+## Files
+
+- `vc.py`: the commands above (`vc <command> --help`). `install.py`: setup. `check.py`: the older one-take form.
+- `voicecheck/`: the code. `config.py` lists every setting (thresholds, models); point `VOICECHECK_CONFIG` at a
+  YAML file to change them. `examples/openmontage_voice.yaml` is a full real configuration.
+- `references/name-research.md`, `references/tts-engines.md`, `references/respelling.md`, `references/checks.md`.

@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: judges-a-misread-name
+context:
+  scaffold_script: place-files.sh
+expected_outcome: |
+  The take (Windows' Zira voice reading "Ask Siobhan about it." from the raw spelling, made by
+  evals/make_fixtures.ps1) is checked with vc.py check and a lexicon entry for Siobhan with IPA ʃɪˈvɔːn. The answer
+  says the name was not said right, reports what was heard (roughly "yah-bun" / j ɔ b ə n) against the target
+  (shiv-AWN), and suggests a fix (re-record from the respelling, or another respelling candidate).

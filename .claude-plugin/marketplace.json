@@ -1,0 +1,15 @@
+{
+  "name": "say-it-right",
+  "description": "say-it-right: pronunciation research, TTS rendering and take checking for AI voice-overs.",
+  "owner": {
+    "name": "logitsolutionsai",
+    "email": "logitsolutionsai@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "say-it-right",
+      "source": "./",
+      "description": "Make AI voice-overs say every word right, names included."
+    }
+  ]
+}

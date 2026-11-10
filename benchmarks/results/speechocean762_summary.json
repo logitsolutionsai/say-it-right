@@ -1,0 +1,125 @@
+{
+  "utterances": 2500,
+  "skipped_utterances": 0,
+  "words": 15967,
+  "labels": {
+    "incorrect_phone": "a phone the experts scored under 1.0 on average (most said incorrect or missed)",
+    "low_word_accuracy": "experts' word accuracy 7 or less (of 10)"
+  },
+  "subsets": {
+    "all words": {
+      "words": 15967,
+      "incorrect_phone": 1142,
+      "low_word_accuracy": 1323,
+      "methods": {
+        "ours": {
+          "pcc_word_accuracy": 0.379,
+          "auc_incorrect_phone": 0.843,
+          "auc_low_word_accuracy": 0.83
+        },
+        "per": {
+          "pcc_word_accuracy": 0.287,
+          "auc_incorrect_phone": 0.788,
+          "auc_low_word_accuracy": 0.778
+        },
+        "letters": {
+          "pcc_word_accuracy": 0.399,
+          "auc_incorrect_phone": 0.845,
+          "auc_low_word_accuracy": 0.838
+        },
+        "both": {
+          "pcc_word_accuracy": 0.442,
+          "auc_incorrect_phone": 0.872,
+          "auc_low_word_accuracy": 0.863
+        }
+      },
+      "shipped_rule_vs_low_word_accuracy": {
+        "flagged": 4335,
+        "precision": 0.229,
+        "recall": 0.75
+      }
+    },
+    "content words": {
+      "words": 7534,
+      "incorrect_phone": 800,
+      "low_word_accuracy": 932,
+      "methods": {
+        "ours": {
+          "pcc_word_accuracy": 0.437,
+          "auc_incorrect_phone": 0.828,
+          "auc_low_word_accuracy": 0.82
+        },
+        "per": {
+          "pcc_word_accuracy": 0.364,
+          "auc_incorrect_phone": 0.794,
+          "auc_low_word_accuracy": 0.786
+        },
+        "letters": {
+          "pcc_word_accuracy": 0.441,
+          "auc_incorrect_phone": 0.832,
+          "auc_low_word_accuracy": 0.819
+        },
+        "both": {
+          "pcc_word_accuracy": 0.489,
+          "auc_incorrect_phone": 0.856,
+          "auc_low_word_accuracy": 0.845
+        }
+      },
+      "shipped_rule_vs_low_word_accuracy": {
+        "flagged": 2481,
+        "precision": 0.292,
+        "recall": 0.777
+      }
+    },
+    "2+ syllable words": {
+      "words": 3411,
+      "incorrect_phone": 441,
+      "low_word_accuracy": 509,
+      "methods": {
+        "ours": {
+          "pcc_word_accuracy": 0.535,
+          "auc_incorrect_phone": 0.858,
+          "auc_low_word_accuracy": 0.848
+        },
+        "per": {
+          "pcc_word_accuracy": 0.462,
+          "auc_incorrect_phone": 0.838,
+          "auc_low_word_accuracy": 0.828
+        },
+        "letters": {
+          "pcc_word_accuracy": 0.509,
+          "auc_incorrect_phone": 0.836,
+          "auc_low_word_accuracy": 0.826
+        },
+        "both": {
+          "pcc_word_accuracy": 0.571,
+          "auc_incorrect_phone": 0.873,
+          "auc_low_word_accuracy": 0.863
+        }
+      },
+      "shipped_rule_vs_low_word_accuracy": {
+        "flagged": 1177,
+        "precision": 0.344,
+        "recall": 0.796
+      }
+    }
+  },
+  "shipped_rule_vs_incorrect_phone": {
+    "flagged": 4335,
+    "precision": 0.206,
+    "recall": 0.784,
+    "f1": 0.327
+  },
+  "by_age": {
+    "adults": {
+      "words": 8701,
+      "auc_ours": 0.845,
+      "auc_per": 0.782
+    },
+    "children": {
+      "words": 7266,
+      "auc_ours": 0.844,
+      "auc_per": 0.796
+    }
+  }
+}

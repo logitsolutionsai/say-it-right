@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+*.wav
+*.mp3
+*.flac
+out/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+evals/results/
+*-workspace/
+benchmarks/results/*.jsonl
+evals/*/files/*.wav
+benchmarks/results/*.log

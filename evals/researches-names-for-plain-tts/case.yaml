@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: researches-names-for-plain-tts
+context:
+  scaffold_script: place-files.sh
+expected_outcome: |
+  A lexicon file covering Ioffe, Szegedy, Saoirse, Karpathy, LeCun and Joaquin (and Sergey/Andrej/Yann/Christian
+  where needed), each with a respelling (`say`), IPA, and a source; the person-specific sources are named, and
+  names with no authoritative source are flagged as unconfirmed rather than presented as certain. A plain-text
+  version of the script for Qwen3-TTS with the respellings applied (render -f text), the on-screen spelling kept
+  separately. A short report listing each name, its pronunciation and source.

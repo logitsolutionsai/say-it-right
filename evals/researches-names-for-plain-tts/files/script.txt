@@ -1,0 +1,1 @@
+Batch normalization came from Sergey Ioffe and Christian Szegedy in 2015. A year later, Saoirse Ronan was not involved, but Andrej Karpathy and Yann LeCun both wrote about it. Joaquin, our editor, cut this part twice.

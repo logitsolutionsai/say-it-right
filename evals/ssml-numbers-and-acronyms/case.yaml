@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: ssml-numbers-and-acronyms
+expected_outcome: |
+  SSML for Azure (vc.py render -f ssml) in which Nguyen gets a researched <phoneme alphabet="ipa"> pronunciation
+  with its source, the acronyms are decided explicitly (MIT and GPU as letters, NVIDIA and GFLOPS as words or
+  spelled as the speaker intends), and ambiguous numbers are handled: 1959 as a year, 10-20 as "ten to twenty",
+  1/100 as "one hundredth", $120,000 as a hundred and twenty thousand dollars; the answer says which readings it
+  chose and why.

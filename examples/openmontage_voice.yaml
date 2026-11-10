@@ -1,0 +1,79 @@
+# Narration engine. Word timings come from Qwen's forced aligner whatever the engine.
+# 2026-10-29 (late): the user picked Phonon's Preston from the video audition (build/_voicetest/clips,
+# "Lets use 10_phonon_preston"). Before that: Chatterbox's built-in voice at exaggeration 0.25 (DL-15 v2), and
+# Ryan (engine: qwen3-tts, speaker: Ryan) for DL-08..14. An episode's `voice: {engine: ..., speaker: ...}` overrides.
+engine: phonon
+speaker: Preston                                 # phonon/pocket: the voice; qwen3-tts: Ryan
+chatterbox:
+  python: .venv-chatterbox/Scripts/python.exe    # its own venv (torch 2.6 + transformers pins; MIT licence)
+  ref: null                                      # null = the built-in voice; or a ~10 s clean clip to clone
+  exaggeration: 0.25
+  cfg_weight: 0.5
+  temperature: 0.8
+# engine: pocket (Kyutai Pocket TTS, CC BY 4.0) or phonon (Gradium Phonon 31M, Apache 2.0): CPU only, `speaker` is the
+# voice (pocket: paul, michael, bill_boerst, charles, george, javert...; phonon: Hadley, Spencer, Delia, Preston...).
+# Their venv: uv venv .venv-cpu-tts --python 3.12, then uv pip install pocket-tts ptts torch (CPU wheels).
+cpu_tts:
+  python: .venv-cpu-tts/Scripts/python.exe
+model: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice      # falls back to the 0.6B model if VRAM is short
+fallback_model: Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+# speaker (above): Ryan was the qwen3-tts voice (back by user request 2026-10-26; Aiden "adds emotions, slow")
+language: English
+# A/B on 6 sentences (reports/rick-the-engineer-study.md): the 2026-10-26 instruction gave Ryan 178 wpm, the steadiest pace
+# (8% spread between sentences) and the flattest pitch (12 semitones vs Aiden's 19). "Fast/flat narrator"
+# wording was slower and less even (167 wpm, 21%); no instruction was slowest (138 wpm).
+# 2026-10-27: the user still heard emotion and stressed words. A "calm, flat documentary narrator" wording was
+# tried (A/B: logit/build/_voicetest/flat/results.json) but read the whole of DL-08 at 147 wpm instead of 161 and
+# chopped comma lines into fragments, so this quick wording stays and the `flat` gate below re-records only the
+# takes that carry a stressed word, a big pitch swing or a lifted ending.
+instruct: >-
+  Confident tech explainer. Neutral, even, matter-of-fact tone with no excitement, no drama and no
+  emotional swings. Quick, steady conversational pace, the same speed from the first word to the last.
+  Clear on numbers.
+
+# Pace: the speaker's own delivery, never time-stretched (stretching read as "fast-forwarding", 2026-10-25).
+target_wpm: natural                              # or a number, e.g. 170, to time-stretch within tempo_limits
+natural_wpm: 193                                 # Phonon Preston: 193 wpm in the audition (Chatterbox e0.25: 201, Ryan: 178)
+qa_wpm: [150, 225]                               # QA pace window for the finished narration
+tempo_limits: [0.88, 1.15]
+
+# Breaks are placed exactly, not left to the voice model. In scripts, [pause] or [pause=0.8] adds one.
+lead_in_s: 0.15
+sentence_pause_s: 0.25                           # between sentences inside a beat (was 0.4; denser, like Rick)
+segment_pause_s: 0.4                             # between beats (segments) (was 0.6)
+pause_s: 0.45                                    # a bare [pause]
+
+# Every take is checked; failing takes are re-recorded with a new seed (up to max_takes).
+checker: openai/whisper-small.en                 # transcribes the take (CPU)
+match_min: 0.95                                  # transcript vs script letter similarity
+# A second ear with no language model (2026-10-27): Whisper wrote "confident and wrong" for a take that says
+# "confident in wrong", and passed "zero for cap" at 0.97 letter similarity. wav2vec2 force-aligns the script
+# to the audio's letters; a word fails when Whisper's diff touches it and its score is < slip_score, or when
+# its score is < gone_score (the word isn't there). Cached takes it has never heard are scored once.
+listener: facebook/wav2vec2-large-960h-lv60-self
+slip_score: 0.65
+gone_score: 0.25
+# Emotion gate (2026-10-27): pitch is measured around the sentence's own downward drift. A take fails when it
+# spans more than range_st semitones, one word jumps more than peak_st above the median word (a stressed word),
+# or the ending rises/drops more than tail_st (a sung question, an excited lift). DL-08's takes: median 11.7 st /
+# 3.7 st / 1.5 st, p90 17.8 / 7.0 / 3.2; the ones that sounded emotional had 9.5-10.6 st peaks ("In PyTorch,
+# YOU...", "Now drag THE...") or a 21 st range with a rising end ("...shoots up without limit").
+flat: {range_st: 19, peak_st: 7.0, tail_st: 4.5}
+pace_syl_s: [3.1, 5.7]                           # syllables per second; above = rushed, below = dragging (Ryan: 3.3-5.6)
+max_takes: 5
+
+aligner: Qwen/Qwen3-ForcedAligner-0.6B
+dtype: float16                                   # Turing GPU (T550): no native bfloat16
+
+# Write numbers and symbols the way they should be spoken; use {shown|spoken} in scripts,
+# e.g. {784|seven hundred eighty-four}.
+# Series rules (the user, 2026-11-04): captions and on-screen text keep the real spelling, the voice reads these.
+# A plain word in a script uses this table; an explicit {shown|spoken} wins (DL-11/12's older {ReLU|ray-loo} stays).
+pronunciations:
+  XOR: ex-or
+  ReLU: rel-you
+  tanh: tanch
+  AI: A I                                        # DL-20's lexicon: two letters, not "eye"
+  Sergey: Sair-gay
+  Ioffe: Yoff-ee
+  Szegedy: Seg-eh-dee
