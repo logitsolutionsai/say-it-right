@@ -64,3 +64,38 @@ def test_audio_too_short_for_the_script_fails_closed(tmp_path):
     code, r = check(say("Hello.", tmp_path / "short.wav"),
                     "Every take is checked before the video ships, with two different models listening.")
     assert code == 1 and r["listener_measured"] is False
+
+
+def test_a_long_take_is_heard_in_windows_and_still_passes(tmp_path):
+    line = "The network learns one weight at a time, and every step makes the error a little smaller."
+    script = " ".join([line] * 9)                              # about 50 s: past one window, so cut and stitched
+    code, r = check(say(script, tmp_path / "long.wav"), script)
+    assert code == 0 and r["passed"] and r["timing"]["audio_seconds"] > 40, r["reasons"]
+
+
+def proofread(audio: Path, transcript: str, *extra) -> tuple[int, dict]:
+    r = subprocess.run([sys.executable, str(ROOT / "vc.py"), "proof", str(audio), transcript, "--local", *extra],
+                       capture_output=True, text=True, encoding="utf-8", cwd=ROOT)
+    return r.returncode, json.loads(r.stdout)
+
+
+SPOKEN = ("Thanks everyone for joining. Shiv-awn will present the results from 1959. The model is confident in wrong "
+          "answers, and it goes from zero to two hundred quickly.")
+
+
+def test_proof_fixes_a_transcript_and_leaves_a_right_one_alone(tmp_path, lexicon):
+    audio = say(SPOKEN, tmp_path / "meet.wav")
+    right = SPOKEN.replace("Shiv-awn", "Siobhan")
+    code, r = proofread(audio, right, "--lexicon", lexicon)
+    assert code == 0 and r["clean"] and r["lexicon"][0]["confirmed"] == 1, r["issues"]
+    wrong = (right.replace("Siobhan", "Shivon").replace("confident in wrong", "confident and wrong")
+             .replace("zero to two", "zero two") + " Thanks for watching, and don't forget to subscribe.")
+    out = tmp_path / "fixed.txt"
+    code, r = proofread(audio, wrong, "--lexicon", lexicon, "--write", str(out), "--apply", "medium")
+    found = {(x["kind"], x["transcript"], x["suggest"]): x["confidence"] for x in r["issues"]}
+    assert code == 1 and found == {
+        ("name", "Shivon", "Siobhan"): "high", ("missing", "", "to"): "high",
+        ("unheard", "Thanks for watching, and don't forget to subscribe", ""): "high",
+        ("misheard", "and", "in"): found.get(("misheard", "and", "in"))}, r["issues"]
+    assert found[("misheard", "and", "in")] in ("high", "medium")     # two short words: high only on a wide margin
+    assert out.read_text(encoding="utf-8") == right

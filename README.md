@@ -15,12 +15,19 @@ take with three ears to confirm the voice actually said it.
 
 Plus pace (syllables per second of speech) and tone (pitch range, stressed word, sung ending).
 
+**And the reverse.** The same three ears proofread a transcript against its audio (`vc proof`): given a recording
+and the text some tool wrote of it (Whisper, a meeting notetaker, auto-captions), they find the text that isn't in
+the audio, the speech the transcript skips, the words it misheard and the names it misspelled, and write the fixed
+transcript back in its own format. See [Proofread a transcript](#proofread-a-transcript-the-reverse).
+
 ---
 
 ## Install
 
-**You need:** Windows, macOS or Linux, with Python 3.10–3.13 installed. The installer finds it even if your default
-Python is newer. You also need about 4 GB of disk for the models. No GPU is needed: everything runs on the CPU.
+**You need:** Windows, macOS (Apple Silicon) or Linux, with Python 3.10–3.13. A newer default Python is fine: the
+installer finds an older one next to it, or lets [uv](https://docs.astral.sh/uv/) fetch one if uv is installed.
+You also need about 5 GB of disk: 3.5 GB for the models and about 1 GB for the packages. No GPU is needed:
+everything runs on the CPU.
 
 ### Step 1: add the skill to your agent
 
@@ -53,25 +60,27 @@ at the folder root, and a folder named after the skill. So the same clone works 
 |---|---|
 | OpenAI Codex | `~/.agents/skills/say-it-right` or `<project>/.agents/skills/say-it-right` |
 | Cursor | `~/.cursor/skills/say-it-right` or `<project>/.cursor/skills/say-it-right` (Cursor also reads `~/.claude/skills`) |
-| GitHub Copilot (CLI, VS Code agent mode, cloud agent) | `gh skill install logitsolutionsai/say-it-right`, or `<project>/.github/skills/say-it-right` |
-| Antigravity / Gemini CLI | `<project>/.agents/skills/say-it-right` |
+| GitHub Copilot (CLI, VS Code agent mode, cloud agent) | `~/.copilot/skills/say-it-right` or `<project>/.github/skills/say-it-right` |
+| Gemini CLI | `~/.gemini/skills/say-it-right` or `<project>/.agents/skills/say-it-right` |
+| Antigravity | `~/.gemini/config/skills/say-it-right` or `<project>/.agents/skills/say-it-right` |
 | Anything else that can run shell commands | anywhere; point the agent at `SKILL.md` |
 
 ### Step 2: set it up (once)
 
 Ask your agent to *"set up say-it-right"*. It runs the skill's `install.py`, which does three things:
-- creates the skill's own virtual environment (`.venv` inside the skill's folder);
+- creates the skill's own virtual environment: `.venv` inside a cloned skill folder, or `~/.say-it-right/venv` for
+  the plugin, because Claude Code replaces the plugin's folder at every update (`VOICECHECK_VENV` puts it elsewhere);
 - installs the dependencies (on Linux it installs PyTorch's CPU build, which saves about 2 GB);
 - runs a self-test.
 
 This takes about a minute with [uv](https://docs.astral.sh/uv/), a few minutes without it. If you skip this step,
 the first command that needs the setup tells the agent to run it. You can also run it yourself, from wherever the
-skill folder is:
+skill folder is. On macOS and Linux the command is `python3`, not `python`.
 
 ```bash
 python ~/.claude/skills/say-it-right/install.py            # set up
 python ~/.claude/skills/say-it-right/install.py --models   # ...and download the three models now (~3.5 GB)
-python ~/.claude/skills/say-it-right/install.py --check    # is it still set up?
+python ~/.claude/skills/say-it-right/install.py --check    # is it still set up, and where is its environment?
 ```
 
 Without `--models`, the models download on the first check of a take. They go into the Hugging Face cache
@@ -94,14 +103,21 @@ matches.
 | Skill folder | `git -C ~/.claude/skills/say-it-right pull` | delete the folder |
 
 Plugins from third-party marketplaces don't update on their own. To turn automatic updates on, open `/plugin` →
-Marketplaces → say-it-right → Enable auto-update. If an update replaces the skill's folder, the skill sets itself up
-again the next time you use it. That takes about a minute, and the models stay cached.
+Marketplaces → say-it-right → Enable auto-update. After an update, run `/reload-plugins` or restart Claude Code.
+The environment and the models are kept across updates. If an update needs new packages, the next command says so,
+and running `install.py` again installs only what changed.
+
+Removing the skill leaves two things on disk; delete them to free the space. The plugin's environment is the folder
+`~/.say-it-right` (about 1 GB). The models (about 3.5 GB) are the folders `models--openai--whisper-small.en` and
+`models--facebook--wav2vec2-*` under `~/.cache/huggingface/hub`.
 
 ### Elsewhere
 
-**claude.ai and the Claude desktop app:** zip the folder so that `say-it-right/SKILL.md` is at the top of the zip,
-then upload it under Customize → Skills. Researching names and rendering scripts work there. Checking audio needs a
-local machine, because PyTorch and the models don't fit in claude.ai's code sandbox.
+**claude.ai and the Claude desktop app:** make a zip with `say-it-right/SKILL.md` at its top. In a clone, run
+`git archive --format=zip --prefix=say-it-right/ -o say-it-right.zip HEAD`. (GitHub's "Download ZIP" names the
+folder `say-it-right-main`, and the upload rejects a folder that isn't named after the skill.) Upload the zip under
+Customize → Skills → + → Create skill → Upload a skill. Researching names and rendering scripts work there. Checking
+audio needs a local machine, because PyTorch and the models don't fit in claude.ai's code sandbox.
 
 **As a plain Python tool:** `pip install git+https://github.com/logitsolutionsai/say-it-right` gives you a `vc`
 command with the same subcommands as `python vc.py`.
@@ -118,7 +134,11 @@ Ask your agent in plain words; the skill triggers on narration, voice-over, TTS,
 >
 > "Check all the takes in out/ against script.txt and re-record the ones that fail."
 
-Or run the commands yourself (`vc` = `python vc.py`; any Python works, vc.py runs inside the skill's `.venv`):
+> "Here's the recording of Tuesday's call and the notetaker's transcript. Fix the transcript: the attendees were
+> Siobhan Nguyen and Christian Szegedy."
+
+Or run the commands yourself (`vc` = `python vc.py`; any Python works, vc.py runs inside the skill's own
+environment):
 
 ```bash
 vc scan script.txt                                   # which words need researching
@@ -129,12 +149,60 @@ vc export-pls --lexicon lexicon.yaml                 # a PLS dictionary for Elev
 vc check take.wav script.txt --lexicon lexicon.yaml  # one JSON report; exit 0 pass, 1 fail, 2 error
 vc check --batch takes.json --lexicon lexicon.yaml   # many takes, models loaded once
 vc serve                                             # keep the models loaded; later checks use it automatically
+vc proof talk.mp3 talk.srt --lexicon names.yaml --write talk.fixed.srt   # the reverse: fix the transcript
 ```
 
 The lexicon (`examples/lexicon.yaml`) records each word's respelling, IPA and source. Settings (models, thresholds,
 pace and tone limits) are in `voicecheck/config.py`; point `VOICECHECK_CONFIG` at a YAML file to change them
 (`examples/openmontage_voice.yaml` is a real one). The workflow the agent follows is in [SKILL.md](SKILL.md), with
 the research behind it in [references/](references/).
+
+### Proofread a transcript (the reverse)
+
+`check` trusts the script and judges the audio. `proof` trusts the audio and judges the text:
+
+```bash
+vc proof meeting.wav meeting.txt --lexicon names.yaml --write meeting.fixed.txt
+```
+
+```text
+The transcript a tool wrote                          What proof reports
+"Shivon will present the results..."                 name      high    Shivon -> Siobhan   (sounds like the lexicon's ʃɪˈvɔːn)
+"...is confident and wrong answers..."               misheard  medium  and -> in           (Whisper wrote "in"; the letters fit it)
+"...goes from zero two hundred quickly."             missing   high    insert "to"
+"Christian Segedi wrote the paper,"                  name      high    Segedi -> Szegedy
+"and Chevonne checked it twice."                     name      medium  Chevonne -> Siobhan (found by sound alone)
+"Thanks for watching, and don't forget to..."        unheard   high    delete: nothing is said there
+```
+
+That is a real run (a 17-second recording, six errors planted in its transcript, none missed, nothing else
+flagged). `--write` applied the four `high` fixes; `--apply medium` applies all six. The swap of two short words
+is held at `medium` on purpose: a/the, in/of and and/in blur in fluent speech, and on real recordings that is
+where a wrong fix would come from. How it decides:
+
+- **Text that isn't in the audio, and speech that isn't in the text.** The transcript is aligned to the audio by
+  the letter model. Words it can't find are `unheard`; speech it hears between or around the transcript's words
+  is `missing`.
+- **Two transcripts and a referee.** Whisper transcribes the audio again (or pass another tool's transcript with
+  `--second`). Where the two disagree, both wordings are aligned to the same stretch of audio by the letter model,
+  which has no language model and so no view on what would make a good sentence. The better fit wins; if the
+  original fits better, nothing is reported.
+- **Names by sound.** A name's spelling doesn't follow its sound, so letters can't settle it: "Shivon" fits the
+  audio of *Siobhan* better than "Siobhan" does. Names go in the lexicon with their IPA, and proof searches the
+  phones of the whole recording for each one. Where the audio says the name and the transcript wrote anything
+  else, the fix is the lexicon's spelling. A disagreement about a name that isn't in the lexicon is reported as
+  `spelling` and never auto-fixed.
+
+Every issue carries its time, line or caption number, evidence and a confidence. `--write` applies the `high`
+ones (`--apply medium` or `all` for more) and keeps the format: SRT and WebVTT keep their timing lines and tags,
+Whisper JSON keeps its segments, plain text keeps its punctuation. Any length of recording works: an hour of audio
+is heard in overlapping 30-second windows and aligned in sections, in memory that doesn't grow with the length.
+Details: [references/proofreading.md](references/proofreading.md); measurements under
+[Results](#proofreading-a-transcript).
+
+What it is for: podcast and meeting transcripts that misspell guests and attendees, captions and subtitles before
+they are published, a narrator's recording against the manuscript, dictation where a term matters, a transcript a
+model may have padded with text nobody said, and cleaning speech datasets (keep the utterance, fix the word).
 
 ---
 
@@ -219,6 +287,54 @@ without; the miss was an unsourced Nguyen pronunciation. The largest difference 
 skill, the agent reached the same verdict on the misread take only after building its own phoneme pipeline: five
 times the time and three times the tool calls.
 
+### Proofreading a transcript
+
+Measured 2026-11-11 on the same laptop. There is no public benchmark for correcting someone else's transcript
+against its audio, so `benchmarks/proof_librispeech.py` makes one from
+[LibriSpeech test-clean](https://www.openslr.org/12) (real people reading, exact reference text): 150 utterances
+of 10–20 s (33.6 minutes, 5,513 words), each turned into a "transcript from some tool" with one known error, plus 25
+left untouched to count false alarms.
+
+| Injected error (25 of each) | Found, with Whisper as second opinion | Fixed by `--write` (high only) | Found, letter ear alone | Fixed, letter ear alone (`--apply medium`) |
+|---|---|---|---|---|
+| A word swapped for an unrelated one | 100% | 84% | 100% | 28% |
+| A word swapped for a similar one (walked → walks) | 100% | 16% (68% with `--apply medium`) | 96% | 52% |
+| One or two words dropped | 100% | 92% | 96% | 32% |
+| One or two words added | 100% | 88% | 100% | 84% |
+| A sentence nobody said, appended | 100% | 96% | 100% | 80% |
+| **All 125** | **125 / 125** | | **123 / 125** | |
+
+| | With Whisper | Letter ear alone |
+|---|---|---|
+| Word error rate of the transcripts, before | 4.39% | 4.39% |
+| ...after `--write` (high-confidence fixes) | **0.65%** | 2.54% |
+| ...after `--write --apply medium` | 0.83% | 1.41% |
+| Wrong high-confidence fixes in 5,513 words | 1 | 0 |
+| Untouched transcripts with nothing reported at medium or high | 21 / 25 | 25 / 25 |
+
+- With a second opinion, every injected error was found, and applying only the `high` fixes removed 85% of the
+  word errors while making one wrong change ("a" → "the") in 5,513 words.
+- Similar-sounding swaps are found but mostly held at `medium`: by design, since sound alone can't separate
+  near-homophones and the report says to check the meaning.
+- Four untouched transcripts drew a `medium` issue: two were Whisper's modern spelling against the book's
+  ("removed" for "remov'd", "watery" for "watry"), two were small words Whisper heard differently ("condensed" for
+  "condense", "a" for "the"). Medium fixes like these are why `--apply medium` scores slightly worse than `high`
+  against these references, and why `high` is the default.
+- The letter ear alone (no second transcript: the case where the transcript *is* Whisper's) finds nearly as much
+  but can only offer what it heard, spelled by ear, so its fixes are `medium` and need a reader.
+
+Read these for what they are. The errors are injected, not made by a real recogniser. The letter model was trained
+on LibriSpeech's training sets, so this is its home ground: noisy, conversational or accented speech will score
+lower. The one threshold tuned on this data (`proof_heard_gain`) was set on 60 other utterances, left out of the
+150. Names aren't in this benchmark (LibriSpeech has no pronunciation glossary); for those there are the planted
+runs, made with the Windows voices: the 17-second recording under
+[Use it](#proofread-a-transcript-the-reverse) (all three misspelled names found; two fixed at `high`, and the one
+found by sound alone at `medium`), a shorter version of which is an end-to-end test (`tests/test_models.py`); and
+a 130-second narration given as captions with seven errors planted (two swapped words, a wrong year, a wrong
+decimal, a deleted sentence, a hallucinated line, a British spelling): 29 word errors before, 1 after
+`--apply medium` (the British spelling, which isn't an error), nothing else flagged.
+Full numbers: `benchmarks/results/proof_librispeech_summary.json`.
+
 ### Latency
 
 Seconds of wall time to check one take, including starting `vc check`. "Before" is the faster of two runs:
@@ -261,24 +377,33 @@ names. Run `python benchmarks/latency.py takes.json` to measure your own machine
 ## Development
 
 ```bash
-python install.py && .venv/Scripts/python -m pip install pytest      # Linux/macOS: .venv/bin/python
-python -m pytest                                             # unit tests: no models, a few seconds
-VOICECHECK_MODEL_TESTS=1 python -m pytest tests/test_models.py # end to end with the real models (Windows voices)
-python benchmarks/speechocean762.py                          # the benchmark below (needs pyarrow)
-claude plugin validate .                                     # the plugin manifests
+python install.py                                            # the environment: .venv in this folder
+uv pip install --python .venv/Scripts/python.exe pytest      # without uv: .venv/Scripts/python -m pip install pytest
+.venv/Scripts/python -m pytest                               # unit tests: no models, a few seconds
+VOICECHECK_MODEL_TESTS=1 .venv/Scripts/python -m pytest tests/test_models.py   # the real models (Windows voices)
+.venv/Scripts/python benchmarks/speechocean762.py            # the name benchmark under Results (needs pyarrow)
+.venv/Scripts/python benchmarks/proof_librispeech.py --data <LibriSpeech/test-clean>   # the proofreading one
+claude plugin validate .                                     # the plugin manifests; it doesn't read SKILL.md
+skills-ref validate .                                        # SKILL.md against the Agent Skills specification
 ```
+
+On macOS and Linux, `python` is `python3` and `.venv/Scripts/python` is `.venv/bin/python`. An environment made by
+uv has no pip of its own, which is why pytest is installed with `uv pip`.
+[skills-ref](https://github.com/agentskills/agentskills/tree/main/skills-ref) wants the folder to be named
+`say-it-right`, like the skill.
 
 | Path | What |
 |---|---|
-| `SKILL.md`, `references/` | the skill: workflow, name research, TTS engine syntax, respelling key, what the checks measure |
+| `SKILL.md`, `references/` | the skill: workflow, name research, TTS engine syntax, respelling key, what `check` and `proof` measure |
 | `vc.py`, `install.py` | the command line; one-step setup |
 | `voicecheck/verify.py` | `Checker` (Whisper), `Listener` (letters), `match`, `slips`, `pace`, `prosody`, `emotional` |
 | `voicecheck/session.py`, `server.py` | a check of one take with its timings; the warm-model server |
-| `voicecheck/text.py`, `ctc.py` | numbers and their readings; CTC forced alignment in numpy |
-| `voicecheck/phonemes.py`, `ipa.py` | the phone ear; IPA parsing, comparison and respelling |
+| `voicecheck/proof.py` | `vc proof`: transcript formats, the issues, the fixes |
+| `voicecheck/text.py`, `ctc.py` | numbers and their readings; CTC forced alignment, free decoding and section cuts in numpy |
+| `voicecheck/phonemes.py`, `ipa.py` | the phone ear; IPA parsing, comparison, spotting a name in a recording, respelling |
 | `voicecheck/lexicon.py`, `engines.py` | the lexicon; each TTS engine's syntax, PLS export |
 | `voicecheck/lookup.py`, `scan.py` | keyless pronunciation lookup; finding the words that need research |
-| `benchmarks/`, `evals/`, `tests/` | the benchmark, the skill's test cases, the unit and end-to-end tests |
+| `benchmarks/`, `evals/`, `tests/` | the benchmarks, the skill's test cases, the unit and end-to-end tests |
 | `reference/` | OpenMontage's audits built on the checker (they import OpenMontage and run there) |
 | `.claude-plugin/` | Claude Code plugin and marketplace manifests |
 
@@ -297,8 +422,9 @@ the pitch range adapts to high voices (`PROSODY_V` 4), and torchaudio is gone. B
 ## Privacy
 
 say-it-right collects nothing. It has no account, no API key and no telemetry, and logitsolutionsai receives no
-data from it. Your scripts, recordings and reports stay on your machine: every check runs locally. `vc serve`
-listens only on 127.0.0.1, so other computers can't reach it.
+data from it. Your scripts, recordings, transcripts and reports stay on your machine: every check and every
+proofread runs locally. `vc serve` listens only on 127.0.0.1, so other computers can't reach it, and it turns away
+requests that come from a web page.
 
 It contacts other services only in these cases:
 

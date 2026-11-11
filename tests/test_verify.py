@@ -210,3 +210,110 @@ def test_a_greedy_mismatch_is_decided_by_beam_search():
     c = FakeChecker({1: "The model is confident and wrong."})
     s, y = _session(c, "the model is confident in wrong")
     assert not s.check(y, 16000, line)["passed"] and c.calls == [1]
+
+
+# ---- bug hunt 2026-11-11
+
+def test_british_and_american_spellings_are_one_word():
+    assert verify.match("What colour is the centre?", "What color is the center?") == (1.0, "")      # was 0.927
+    assert verify.match("OK, let's go.", "Okay, let's go.") == (1.0, "")                              # was 0.90
+    assert verify.match("The neighbour's grey programme was organised.",
+                        "The neighbor's gray program was organized.")[0] == 1.0
+    scores = [("the", .9), ("colour", .5), ("here", .9)]
+    assert verify.slips("the colour here", "the color here", scores) == []
+    # only real pairs fold: these stay themselves (and the number-word homophones stay apart on purpose)
+    apart = "four for hour our more are rise wise emphasis analyses specialist organist to two won one".split()
+    assert verify._same_sound(apart) == apart
+    assert verify.match("We have four more hours.", "We have for moer hors.")[0] < 0.95
+
+
+NGUYEN = {"Nguyen": {"say": "Win", "ipa": "wɪn"}, "Said": {"say": "sah-EED", "ipa": "sɑːˈiːd"}}
+
+
+def _terms(script):
+    from voicecheck import lexicon
+    return lexicon.render(script, lexicon.load([], base=NGUYEN))
+
+
+def test_ignore_hides_the_term_not_every_word_spelled_like_it():
+    r = _terms("We win when Nguyen wins.")                 # spoken: We win when Win wins.
+    assert verify.match(r.spoken, "We win when Wynn wins.", alt=r.shown, ignore=r.terms) == (1.0, "")
+    score, diff = verify.match(r.spoken, "We lose when Win wins.", alt=r.shown, ignore=r.terms)
+    assert score < 0.95 and diff == "win -> lose"          # was 1.0: the ordinary "win" was hidden with the name
+    r = _terms("He said yes and Said left.")
+    assert verify.match(r.spoken, "He said yes and Sayeed left.", alt=r.shown, ignore=r.terms)[0] == 1.0
+    assert verify.match(r.spoken, "He shouted yes and Said left.", alt=r.shown, ignore=r.terms)[0] < 0.95
+    # a bare phrase still hides every place it is written (callers that have no Terms)
+    assert verify.match("We win when Win wins.", "We lose when Win wins.", ignore=["Win"])[0] == 1.0
+
+
+class FakeEar:
+    """Stands in for the phoneme ear: records which words it was asked to judge, and passes them."""
+    def __init__(self):
+        self.asked = []
+
+    def judge(self, y, sr, target_ipa, t0, t1, word="", said="", pad=0.08):
+        self.asked.append((word, round(t0, 2)))
+        return type("V", (), {"as_dict": lambda self: {"word": word, "ok": True, "heard": "", "target": target_ipa,
+                                                        "score": 1.0}})()
+
+
+def test_a_wrong_ordinary_word_is_not_excused_by_a_name_that_is_spelled_like_it():
+    from voicecheck import lexicon
+    table = lexicon.load([], base=NGUYEN)
+    script, said = "We win when Nguyen wins.", "We lose when Win wins."
+    c = FakeChecker({1: said, 5: said})
+    s, y = _session(c, "we lose when win wins")            # the voice said "lose" for "win"
+    s._ear = FakeEar()
+    rep = s.check(y, 16000, script, table=table)
+    assert not rep["passed"] and any("win" in r for r in rep["reasons"]), rep["reasons"]
+    assert [w for w, _ in s._ear.asked] == ["Nguyen"]
+    good = "We win when Win wins."
+    s, y = _session(FakeChecker({1: good, 5: good}), "we win when win wins")
+    s._ear = FakeEar()
+    rep = s.check(y, 16000, script, table=table)
+    assert rep["passed"], rep["reasons"]
+    win, name = s._listener.spans[1], s._listener.spans[3]
+    assert [w for w, _ in s._ear.asked] == ["Nguyen"]
+    assert win[2] < s._ear.asked[0][1] <= name[1]           # it listened after "when", not at the ordinary "win"
+
+
+def test_a_number_heard_as_another_number_is_a_slip_whatever_the_letters_score():
+    scores = [("he", .95), ("did", .95), ("fifteen", .9), ("reps", .95)]
+    assert verify.slips("He did 15 reps", "He did 50 reps", scores) == ["fifteen (0.90)"]             # was []
+    scores = [("it", .9), ("costs", .9), ("fifteen", .9), ("hundred", .9), ("dollars", .9)]
+    assert verify.slips("It costs $1,500", "It costs $1,600", scores) == ["fifteen (0.90)"]
+    # the same number written another way, or a word that is no number, is not a swap
+    assert verify.slips("about 100 people", "about a hundred people",
+                        [("about", .9), ("one", .7), ("hundred", .9), ("people", .9)]) == []
+    assert verify.slips("In 1959", "in nineteen fifty-nine", [("in", .9), ("nineteen", .9), ("fifty", .9),
+                                                              ("nine", .9)]) == []
+    assert verify.slips("June 5", "June 5th", [("june", .9), ("five", .8)]) == []
+    assert verify.slips("for 2 days", "for a few days", [("for", .9), ("two", .9), ("days", .9)]) == []
+
+
+def test_many_numbers_do_not_make_the_comparison_slow():
+    import time
+    line = ("In 1959 the company had 784 workers and made $1,234.50 per day, about 3.5% more than 1,000,000 others "
+            "between 2020-2021 at 10:30. ")
+    script = line * 10                                     # 220 words, 70 numbers: took 36 s
+    said = " ".join(verify.norm_words(script)).replace("one thousand two hundred thirty four", "twelve thirty four")
+    t0 = time.perf_counter()
+    assert verify.match(script, script)[0] == 1.0
+    assert verify.match(script, said)[0] == 1.0
+    assert time.perf_counter() - t0 < 5
+    # the same choices as scoring the whole text for every reading
+    said = "pages three five and ten through twenty then a hundred or a thousand at three oh five".split()
+    assert verify._fit("pages 3-5 and 10-20, then 100 or 1,000 at 3:05", said) == said
+    assert verify._fit("100 100 100", "a hundred one hundred one zero zero".split()) == \
+        "a hundred one hundred one zero zero".split()
+    assert verify._fit("We are #1 in 2½ years", "we are number one in two and a half years".split()) == \
+        "we are number one in two and a half years".split()
+
+
+def test_syllables_count_silent_e_and_spelled_out_acronyms():
+    assert verify.syllables("She asked what makes names sometimes used") == 8        # was 14
+    assert verify.syllables("the idea of science is quiet") == 10                    # was 7
+    assert verify.syllables("one hundred and ninety nine million") == 9
+    assert verify.syllables("GPU and FBI") == 7 and verify.syllables("NASA") == 2    # was 3: letters, a syllable each
+    assert verify.syllables("the network learns") == 4

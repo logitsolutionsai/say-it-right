@@ -19,6 +19,13 @@ OpenMontage `voice.yaml` works as is: `examples/openmontage_voice.yaml`). Keys r
     pitch_hz         "auto" (60 Hz up to 2.5x the voice's median, at least 320) or [low, high] for the pitch tracker
     pronunciations   word -> respelling, or word -> {say, ipa, source, note}; see voicecheck/lexicon.py
     lexicon          path(s) of lexicon YAML files merged over `pronunciations`
+    proof_gain       `proof`: how much better (in log-likelihood, to the letter model) another wording must fit the
+                     audio than the transcript's before it is suggested
+    proof_heard_gain `proof`: how much better the letters the model hears by itself must fit than the transcript's word
+                     before that word is reported (10: see references/proofreading.md for the calibration)
+    proof_agree_min  `proof`: when the letter model hears a smaller share of the transcript's words than this, the
+                     transcript is taken to be of another recording and nothing is suggested with confidence
+    spot_min         `proof`: how closely a stretch of audio must match a lexicon name's IPA to count as that name
     quantize         int8 dynamic quantisation on the CPU: true (all three models) or a list of them ("checker",
                      "listener", "phonemes"). Faster, but it moves the calibrated scores: see README
 """
@@ -37,6 +44,10 @@ DEFAULTS = {
     "gone_score": 0.25,
     "phone_min": 0.6,             # calibrated 2026-11-10 on 32 takes (8 names x 2 voices x right/naive)
     "phone_hard_max": 0,
+    "proof_gain": 4.0,
+    "proof_heard_gain": 10.0,
+    "proof_agree_min": 0.3,
+    "spot_min": 0.8,
     "pace_syl_s": None,
     "flat": {},
     "pitch_hz": "auto",

@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "say-it-right"
-version = "0.2.0"
-description = "Make AI voice-overs say every word right, names included: research, lexicon, render, and a three-ear check of every take."
+version = "0.3.0"
+description = "Make AI voice-overs say every word right, names included: research, lexicon, render, and a three-ear check of every take; and proofread a transcript against its audio."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "logitsolutionsai", email = "logitsolutionsai@gmail.com" }]
-keywords = ["tts", "text-to-speech", "pronunciation", "ipa", "ssml", "voice-over", "agent-skills"]
+keywords = ["tts", "text-to-speech", "pronunciation", "ipa", "ssml", "voice-over", "transcript", "subtitles", "agent-skills"]
 dependencies = [
     "numpy>=1.26",
     "torch>=2.4",

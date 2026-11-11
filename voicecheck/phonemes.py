@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from . import config, ipa
-from .verify import _guard_sklearn, _local_first, _log, _speedup, _to16k
+from .verify import _guard_sklearn, _local_first, _log, _speedup, _to16k, ctc_log_probs
 
 _SPECIAL = {"<pad>", "<s>", "</s>", "<unk>", "|", " "}
 
@@ -52,15 +52,7 @@ def word_window(times: list, a: int, b: int, total: float) -> tuple[float, float
     return min(first[0], before), max(last[1], after)
 
 
-def hard_errors(diff: str) -> int:
-    """Clear substitutions (!) and missing non-weak sounds (-x) in a compare() diff."""
-    n = 0
-    for op in diff.split():
-        if "!" in op:
-            n += 1
-        elif op.startswith("-") and op[1:] not in ipa._WEAK:
-            n += 1
-    return n
+hard_errors = ipa.hard_errors                             # moved to voicecheck.ipa; kept here by name
 
 
 class PhonemeEar:
@@ -83,17 +75,13 @@ class PhonemeEar:
     def log_probs(self, y: np.ndarray, sr: int) -> tuple[np.ndarray, float]:
         """[T, C] phone log-posteriors and seconds per frame; the last take is cached (one pass serves every word)."""
         import hashlib
-
-        import torch
         # Keyed by the audio's content: an id() can be reused by the next array, which would hand back the previous
         # take's phones (a batch, the server and the benchmark all check take after take).
         key = (hashlib.md5(np.ascontiguousarray(y).tobytes()).hexdigest(), len(y), sr)
         if self._cache and self._cache[0] == key:
             return self._cache[1], self._cache[2]
         y16 = _to16k(y, sr)
-        x = self.fe(y16, sampling_rate=16000, return_tensors="pt").input_values
-        with torch.no_grad():
-            lp = torch.log_softmax(self.model(x).logits[0].float(), -1).numpy()
+        lp = ctc_log_probs(self.model, self.fe, y16)
         sec = len(y16) / 16000 / max(1, lp.shape[0])
         self._cache = (key, lp, sec)
         return lp, sec
@@ -112,6 +100,13 @@ class PhonemeEar:
                     out.append(ph)
             prev = k
         return out
+
+    def timed(self, y: np.ndarray, sr: int) -> tuple[list[tuple[str, int, int]], float]:
+        """Every phone of the take with its frames: ([(phone, first frame, end frame)], seconds per frame)."""
+        from . import ctc
+        lp, sec = self.log_probs(y, sr)
+        out = [(self.id2ph.get(k, ""), a, b) for k, a, b, _ in ctc.greedy(lp, self.blank)]
+        return [x for x in out if x[0] and x[0] not in _SPECIAL], sec
 
     def judge(self, y: np.ndarray, sr: int, target_ipa: str, t0: float, t1: float, word: str = "", said: str = "",
               pad: float = 0.08) -> Verdict:

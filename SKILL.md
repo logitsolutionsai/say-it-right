@@ -1,7 +1,7 @@
 ---
 name: say-it-right
 license: MIT
-description: Make AI voice-overs say every word right, especially people's names, and prove it before the audio ships. Researches how names and rare terms are really pronounced (Wikipedia/Wiktionary/Wikidata IPA and native recordings, plus web search for the person's own pronunciation), keeps them in a sourced lexicon, renders the script for the TTS engine in use (respellings, SSML phonemes, ElevenLabs/Cartesia/Kokoro/Piper inline IPA, PLS dictionaries), then checks each recorded take with three ears (Whisper, a letter model with no language model, and an IPA phoneme model) for slipped or missing words, mispronounced names, pace and tone. Use this whenever someone is making narration, a voice-over, a podcast or video voice, an audiobook, or any text-to-speech audio, asks how to pronounce a name for a TTS voice, wants a pronunciation dictionary or SSML phonemes, or wants to verify a TTS take against its script, even if they never say "pronunciation" or "check".
+description: Make AI voice-overs say every word right, especially people's names, and prove it before the audio ships; and the reverse: proofread a transcript against its audio. Researches how names and rare terms are pronounced (Wikipedia/Wiktionary/Wikidata IPA, recordings, web search), keeps them in a sourced lexicon, renders the script for the TTS engine (respellings, SSML phonemes, ElevenLabs/Cartesia/Kokoro/Piper IPA, PLS dictionaries), then checks each take with three ears (Whisper, a letter model with no language model, an IPA phone model) for slipped or missing words, mispronounced names, pace and tone. The same ears check any tool's transcript or captions against the recording: hallucinated text, skipped speech, misheard words, misspelled names. Use for narration, voice-over, podcast, audiobook or any TTS work, pronouncing a name, pronunciation dictionaries, verifying a take against its script, or checking or fixing a transcript or subtitles against the audio, even if nobody says "pronunciation" or "check".
 ---
 
 # say-it-right
@@ -15,21 +15,25 @@ take will even "correct" the mistake back to the spelling. This skill closes tha
 3. **Render** the script in the syntax the user's TTS engine understands.
 4. **Check** every take, and re-record or re-spell until it passes.
 
+The same ears also work in reverse (section 5): given a recording and a transcript some tool wrote of it, they find
+the text that isn't in the audio, the speech the transcript skips, the misheard words and the misspelled names.
+
 Everything runs from `vc.py` in this skill's folder: `${CLAUDE_SKILL_DIR}` (in agents that don't substitute it, the
-folder holding this file). Below, `vc` stands for `python "${CLAUDE_SKILL_DIR}/vc.py"`; any Python works, vc.py runs
-itself inside the skill's own environment. Results are JSON on stdout, progress on stderr; exit code 0 = passed,
-1 = a take failed a check, 2 = the command failed.
+folder holding this file). Below, `vc` stands for `python "${CLAUDE_SKILL_DIR}/vc.py"` (`python3` on macOS and
+Linux); any Python works, vc.py runs itself inside the skill's own environment. Results are JSON on stdout,
+progress on stderr; exit code 0 = passed, 1 = a take failed a check (or `proof` found issues), 2 = the command
+failed.
 
 ## Setup (once)
 
 ```bash
-python "${CLAUDE_SKILL_DIR}/install.py"          # creates the skill's .venv; ~1 minute with uv, a few without
-python "${CLAUDE_SKILL_DIR}/install.py" --check  # later: is it still installed?
+python "${CLAUDE_SKILL_DIR}/install.py"          # creates the skill's environment; ~1 minute with uv, a few without
+python "${CLAUDE_SKILL_DIR}/install.py" --check  # later: is it still installed, and where?
 ```
 
-If a command says the skill isn't installed, run the first line. The first `check` downloads Whisper small.en and
-wav2vec2 (about 2.2 GB) and the first check of a researched name adds the phoneme model (1.3 GB); add `--models` to
-install.py to download them up front. All run on the CPU.
+If a command says the skill isn't installed, or that it was updated, run the first line. The first `check`
+downloads Whisper small.en and wav2vec2 (about 2.2 GB) and the first check of a researched name adds the phoneme
+model (1.3 GB); add `--models` to install.py to download them up front. All run on the CPU.
 
 ## 1. Find the words that need research
 
@@ -94,15 +98,17 @@ vc render script.txt --lexicon lexicon.yaml -f <format>
 | Engine | Format | What it gets |
 |---|---|---|
 | Qwen3-TTS, Chatterbox, Kyutai Pocket, Gradium Phonon, Coqui XTTS, Sesame CSM, Dia, OpenAI TTS, ElevenLabs Multilingual v2 / Flash v2.5 | `text` | respellings in plain text |
-| Azure (add `--voice <name>`), Google Cloud incl. Chirp 3 HD sync, Amazon Polly (add `--bare`) | `ssml` | `<phoneme alphabet="ipa">` in US-English phones, `<sub alias>` |
-| ElevenLabs v4 | `elevenlabs` | inline `/IPA/` for researched words |
-| ElevenLabs v3 / v4 / Flash v2, Azure `<lexicon>`, Polly lexicons | `export-pls` | a PLS dictionary file to upload |
+| Azure (add `--voice <name>`); Google Cloud incl. Chirp 3 HD sync and Amazon Polly (add `--bare`, no `--voice`) | `ssml` | `<phoneme alphabet="ipa">` in US-English phones, every syllable marked, one per word; `<sub alias>` |
+| ElevenLabs v4, Inworld TTS-2 | `elevenlabs` | inline `/IPA/` for researched words |
+| ElevenLabs v3 / v4 / v4 Turbo / Flash v2, Azure `<lexicon>`, Polly lexicons | `export-pls` | a PLS dictionary file to upload |
 | Cartesia Sonic 3.x | `cartesia` | `<<s\|ˈ\|ɛ\|...>>` inline IPA |
 | Kokoro | `kokoro` | `[word](/misaki phones/)` |
 | Piper | `piper` | `[[ espeak phonemes ]]` |
 
 Engine details and caveats (which ElevenLabs models ignore phonemes, Chirp's sync-only SSML, Kokoro silently
-dropping unknown symbols) are in `references/tts-engines.md`. If unsure of the engine, ask; `text` works everywhere.
+dropping unknown symbols), and a dozen more engines with no format of their own yet (Deepgram, MiniMax, Fish Audio,
+Rime, Murf...), are in `references/tts-engines.md`. If unsure of the engine, ask; `text` works everywhere. A sound
+the engine has no symbol for stops `render` with an error naming it, rather than sending input the engine rejects.
 
 Keep the on-screen text and captions in the real spelling; only the voice gets the respelling.
 Azure's Dragon HD Omni voices ignore `<phoneme>`: for them render `text` (or give both files and say which is which).
@@ -119,7 +125,8 @@ vc check --batch takes.json --lexicon lexicon.yaml          # many takes, models
 per take: loading the models takes longer than checking a short take. When you'll record, check and re-record in
 a loop, start `vc serve` in the background once (it keeps the models loaded on 127.0.0.1:8767); every later
 `vc check` uses it automatically, about 3 s for a short take instead of 8. Each report has `timing` (seconds per
-step).
+step). A take can be any length (a whole chapter is heard in overlapping 30-second windows), but short takes are
+cheaper to re-record: check line by line when the pipeline records line by line.
 
 The report's `passed` is true only if all of these hold, and `reasons` says which failed:
 
@@ -146,11 +153,46 @@ When a take fails:
 Give each line a few attempts (three to five), then stop and report what still fails, with the `heard` phones and
 `diff`, so a person can listen. Never claim a take passed without running `check` on it.
 
+## 5. The reverse: proofread a transcript against its audio
+
+When the audio is the truth and the text is in doubt (a Whisper transcript, captions, meeting notes, a typed
+manuscript of a recording):
+
+```bash
+vc proof talk.mp3 talk.srt --lexicon names.yaml --write talk.fixed.srt   # .txt .md .srt .vtt, Whisper .json, or the text
+vc proof talk.mp3 talk.txt --second other_tool.txt                       # another tool's transcript as the second opinion
+```
+
+It reports `issues`, each with `kind`, `at` (seconds), `line`/`cue`, `transcript` (what is written), `suggest`,
+`confidence`, `why` and `evidence`:
+
+- **unheard**: text that isn't in the audio (a hallucinated "Thanks for watching", a line from another take).
+- **missing**: speech the transcript skips.
+- **misheard**: a second transcript (Whisper by default) wrote another word and the letter model, which has no
+  language model, finds that word in the audio and not the transcript's; or the letter model alone clearly hears
+  something else.
+- **name**: the audio says a lexicon name (its IPA is searched for in the whole recording, and near-spellings are
+  checked by sound) where the transcript wrote something else: "Shivon", "Chevonne" → Siobhan.
+  **name-mismatch**: the transcript wrote the name, the audio doesn't sound like it.
+- **spelling**: a capitalised word the transcripts spell differently and that isn't in the lexicon. Sound can't
+  settle a name's spelling, so it is never auto-fixed: research it (section 2), add it to the lexicon, run again.
+- **unsure**: the letter model hears something else, not clearly enough to say what.
+
+So the work is the four moves again, in another order: `vc scan transcript.txt` for the names and terms, research
+their spelling and IPA (the attendee list, the show notes and the speakers' own profiles are the best sources for
+spelling), put them in a lexicon, then `proof`. `--write` applies only `high`-confidence fixes unless told
+`--apply medium` or `all`; a `medium` fix is probably right, and its `why` says what to check (a suggestion
+"spelled by ear" is the letter model's rough spelling of what it heard: fix the spelling before taking it). Read
+the `low` ones yourself: you know what the sentence means, the ears only know what it sounds like. If `note` says
+the transcript looks like another recording's, stop and ask. Details and measurements:
+`references/proofreading.md`.
+
 ## Report back
 
 Tell the user, briefly: which words you researched and the source for each (and any you couldn't confirm), the
 lexicon file you wrote, the render format used, and per line whether it passed, with the reasons for any that
-didn't. The lexicon is reusable: next time, `scan` will show those words as already covered.
+didn't. The lexicon is reusable: next time, `scan` will show those words as already covered. For a proofread
+transcript: what was fixed and at what confidence, and each issue left for a person to hear, with its time.
 
 ## Limits worth stating
 
@@ -159,10 +201,13 @@ didn't. The lexicon is reusable: next time, `scan` will show those words as alre
 - The name check needs `ipa` in the lexicon; it's calibrated on 32 takes (8 names, 2 voices) and will mishear
   some rare sounds. Treat a failure as "listen to this", with the diff saying where.
 - Rare names are where every model is weakest, which is why the research step matters more than the check.
+- `proof` can't tell homophones apart (their/there sound the same): meaning is your job. It was measured on clean
+  read speech; on noisy, overlapping or accented speech expect more `low` and `unsure` issues, and trust `high`.
 
 ## Files
 
 - `vc.py`: the commands above (`vc <command> --help`). `install.py`: setup. `check.py`: the older one-take form.
 - `voicecheck/`: the code. `config.py` lists every setting (thresholds, models); point `VOICECHECK_CONFIG` at a
   YAML file to change them. `examples/openmontage_voice.yaml` is a full real configuration.
-- `references/name-research.md`, `references/tts-engines.md`, `references/respelling.md`, `references/checks.md`.
+- `references/name-research.md`, `references/tts-engines.md`, `references/respelling.md`, `references/checks.md`,
+  `references/proofreading.md`.

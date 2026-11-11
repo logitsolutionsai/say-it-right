@@ -63,12 +63,25 @@ speechocean762 benchmark in the README (`benchmarks/speechocean762.py`).
   and it pulls in pandas (whose DLL Windows Application Control blocked on the test machine). The local one is
   also accent-aware and stress-aware, which panphon's isn't.
 
+## Long takes
+
+A take of up to 40 seconds goes through the two wav2vec2 models whole. A longer one is heard in windows of 30
+seconds, each with 5 seconds of audio either side whose frames are thrown away, and the windows are joined: the
+models' memory grows with the square of the length, and a five-minute take heard whole needs more than 10 GB. The
+script is then aligned in sections, cut where the script and the letter model's own hearing agree word for word
+(at the word boundary the model marked), so the alignment table stays small. On the same posteriors, section-wise
+and whole alignment give the same word scores and times (`tests/test_proof.py`, and a 130-second take: 369 of 369
+words identical). Windowed hearing itself moves a few word scores slightly (one word in 369 by more than 0.2 on
+that take); the verdict was the same. A stretch where the script and the audio share too little to cut (a script
+for a different recording) is left unmeasured and the take fails with a reason that says where.
+
 ## Known limits
 
 - **Stress is only heard through vowels.** Neither phone model outputs stress marks. A stress shift that changes a
   vowel is caught (kar-PAH-thee said KAR-puh-thee reduces the stressed ɑ to ə); one that keeps every vowel
   (LE-cun for lə-KUN, if the voice keeps the schwa) is not. Listen to names where stress is the whole point.
 
+- **Short names are judged loosely.** A name of three sounds (/wɪn/ for Nguyen) has little to hold the audio to: another short word with close sounds can pass. Names of five sounds or more are where the check is strong.
 - English scripts only (Whisper small.en and the letter model are English).
 - Words with no `ipa` get only the transcript and letter checks; respelled pieces after the first aren't scored by
   letters (the "you" of rel-you is spoken "yu").

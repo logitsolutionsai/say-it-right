@@ -35,7 +35,8 @@ from pathlib import Path
 
 def _ua() -> str:
     contact = os.environ.get("VOICECHECK_CONTACT", "https://github.com/logitsolutionsai/say-it-right; logitsolutionsai@gmail.com")
-    return f"say-it-right/0.2 (pronunciation lookup; {contact})"
+    from . import __version__
+    return f"say-it-right/{__version__} (pronunciation lookup; {contact})"
 
 
 _LAST = [0.0]

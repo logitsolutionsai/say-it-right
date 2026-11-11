@@ -9,8 +9,10 @@
     python vc.py check take.wav script.txt            the take against the script: words, names, pace, tone
     python vc.py check --batch takes.json             many takes, models loaded once
     python vc.py serve                                keep the models loaded; later checks use it automatically
+    python vc.py proof talk.mp3 talk.srt              the reverse: is this transcript what the audio says?
 
-Exit codes: 0 passed, 1 the take failed a check, 2 the command itself failed (bad input, missing model).
+Exit codes: 0 passed (proof: nothing to fix), 1 the take failed a check (proof: issues found), 2 the command
+itself failed (bad input, missing model).
 A script argument can be the text itself or a path to a .txt file. --lexicon FILE (repeatable) adds lexicon files.
 """
 from __future__ import annotations
@@ -29,10 +31,32 @@ def _out(obj) -> None:
                      else str(o)))
 
 
+def _file(arg: str) -> Path | None:
+    """The .txt/.md file that `arg` names, or None when it is the text itself. A path over 260 characters is opened
+    in Windows' long form (it used to be taken for the script's text)."""
+    if Path(arg).suffix.lower() not in (".txt", ".md"):
+        return None
+    try:
+        p = Path(arg)
+        if os.name == "nt" and len(arg) >= 248 and not arg.startswith("\\\\"):
+            p = Path("\\\\?\\" + os.path.abspath(arg))
+        return p if p.is_file() else None
+    except (OSError, ValueError):                          # not a legal path at all: a sentence ending in ".txt"
+        return None
+
+
 def _text(arg: str) -> str:
-    p = Path(arg)
-    if len(arg) < 260 and p.suffix.lower() in (".txt", ".md") and p.exists():
-        return p.read_text(encoding="utf-8").strip()
+    """A script argument: the text itself, or the contents of a .txt/.md file (a byte-order mark is not text)."""
+    p = _file(arg)
+    if p is not None:
+        return p.read_text(encoding="utf-8-sig").strip()
+    if Path(arg).suffix.lower() in (".txt", ".md"):        # a mistyped path is not a script to check: one word, or
+        try:                                               # a file in a folder that exists ("C:\Users\A B\x.txt")
+            path = not any(c.isspace() for c in arg) or (len(Path(arg).parts) > 1 and Path(arg).parent.is_dir())
+        except (OSError, ValueError):
+            path = False
+        if path:
+            raise FileNotFoundError(f"no such script file: {arg}")
     return arg
 
 
@@ -110,21 +134,38 @@ def cmd_export_pls(args) -> int:
 
 
 def _batch(path: str) -> list[dict]:
-    """A batch file: JSON or YAML list of {audio, script, shown?}, or lines of `audio<TAB>script`. Paths are relative
-    to the batch file."""
+    """A batch file: JSON or YAML list of {audio, script, shown?}, or lines of `audio<TAB>script`. Paths (the audio,
+    and a script or shown wording given as a .txt/.md file) are relative to the batch file."""
     base = Path(path).resolve().parent
-    text = Path(path).read_text(encoding="utf-8")
+    text = Path(path).read_text(encoding="utf-8-sig")      # -sig: a byte-order mark is not part of the first path
     if path.lower().endswith((".json", ".yaml", ".yml")):
         import yaml
-        items = yaml.safe_load(text) or []
+        try:
+            items = yaml.safe_load(text)
+        except yaml.YAMLError as e:
+            raise ValueError(f"{path}: not valid JSON/YAML: {' '.join(str(e).split())}") from None
+        if isinstance(items, dict) and "audio" in items:   # one take, not wrapped in a list
+            items = [items]
     else:
-        items = [dict(zip(("audio", "script"), line.split("	", 1))) for line in text.splitlines()
-                 if line.strip() and "	" in line]
+        items = []
+        for n, line in enumerate(text.splitlines(), 1):
+            if line.strip():
+                if "\t" not in line:
+                    raise ValueError(f"{path}:{n}: expected audio<TAB>script, got {line.strip()[:60]!r}")
+                items.append(dict(zip(("audio", "script"), (cell.strip() for cell in line.split("\t", 1)))))
+    if not isinstance(items, list) or not items:           # nothing checked must not read as "all passed"
+        raise ValueError(f"{path}: no takes in the batch (expected a list of {{audio, script}})")
     for it in items:
         if not isinstance(it, dict) or "audio" not in it or "script" not in it:
             raise ValueError(f"{path}: each entry needs audio and script, got {it!r}")
+        for key in ("audio", "script", "shown"):           # YAML reads an unquoted 1959 or yes as a number or True
+            if not (isinstance(it.get(key), str) and it[key].strip()) and (key != "shown" or it.get(key) is not None):
+                raise ValueError(f"{path}: {key} must be text (quote it), got {it.get(key)!r}")
         if not Path(it["audio"]).is_absolute():
             it["audio"] = str(base / it["audio"])
+        for key in ("script", "shown"):
+            if it.get(key) and Path(it[key]).suffix.lower() in (".txt", ".md") and _file(str(base / it[key])):
+                it[key] = str(base / it[key])
     return items
 
 
@@ -160,6 +201,37 @@ def cmd_check(args) -> int:
     else:
         _out(reports[0])
     return 0 if all(r["passed"] for r in reports) else 1
+
+
+def cmd_proof(args) -> int:
+    from . import proof
+    from .session import Session
+    doc = proof.read(args.transcript)
+    if args.no_second:
+        second = None
+    elif args.second:
+        second = proof.read(args.second)
+    else:
+        second = "whisper"
+    from . import server
+
+    def path(x):                                           # absolute: a server may run in another folder
+        return str(Path(x).resolve()) if len(x) < 260 and Path(x).is_file() else x
+    if not args.local and server.alive():
+        print(f"using the running server at {server.url()}", file=sys.stderr)
+        report = server.request_proof(path(args.audio), path(args.transcript),
+                                      [path(f) for f in (args.lexicon or [])],
+                                      None if args.no_second else path(args.second) if args.second else "whisper")
+    else:
+        y, sr = _audio(args.audio)
+        report = Session().proof(y, sr, doc, table=_table(args), second=second)
+    report["audio"], report["transcript"] = args.audio, args.transcript if len(args.transcript) < 260 else "(text)"
+    if args.write:
+        chosen = proof.edits(report, args.apply)
+        Path(args.write).write_text(doc.fix(chosen), encoding="utf-8")
+        report["written"] = {"file": args.write, "fixes_applied": len(chosen), "level": args.apply}
+    _out(report)
+    return 0 if report["clean"] else 1
 
 
 def cmd_serve(args) -> int:
@@ -223,6 +295,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--local", action="store_true", help="don't use a running `vc.py serve`")
     p.set_defaults(fn=cmd_check)
 
+    p = lex(sub.add_parser("proof", help="proofread a transcript against its audio (check, in reverse)"))
+    p.add_argument("audio", help="the recording (wav, flac, ogg, mp3...)")
+    p.add_argument("transcript", help="the transcript to judge: .txt, .md, .srt, .vtt, Whisper .json, or the text")
+    p.add_argument("--second", metavar="FILE", help="another tool's transcript of the same audio, as the second "
+                                                    "opinion (default: Whisper transcribes it again)")
+    p.add_argument("--no-second", action="store_true", help="no second opinion: the letter ear and the lexicon only")
+    p.add_argument("--write", metavar="FILE", help="write the transcript with the fixes applied, in the same format")
+    p.add_argument("--apply", choices=["high", "medium", "all"], default="high",
+                   help="with --write: which fixes to apply, by confidence (default high)")
+    p.add_argument("--local", action="store_true", help="don't use a running `vc.py serve`")
+    p.set_defaults(fn=cmd_proof)
+
     p = sub.add_parser("serve", help="keep the models loaded for fast repeated checks (127.0.0.1 only)")
     p.add_argument("--port", type=int, help="default 8767, or VOICECHECK_PORT")
     p.set_defaults(fn=cmd_serve)
@@ -241,4 +325,12 @@ def main(argv=None) -> int:
         return args.fn(args)
     except (FileNotFoundError, ValueError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
+        return 2
+    except Exception as e:                                 # never exit 1 on a crash: 1 means "the take failed"
+        if type(e).__module__.split(".")[0] == "yaml":     # a settings or lexicon file that isn't YAML
+            print(f"error: not valid YAML: {' '.join(str(e).split())}", file=sys.stderr)
+        else:
+            import traceback
+            traceback.print_exc()
+            print(f"error: {type(e).__name__}: {e}", file=sys.stderr)
         return 2

@@ -18,7 +18,8 @@ from dataclasses import dataclass
 _VOWEL_CHARS = set("aeiouyæɑɒɐɔəɘɛɜɞɪɨʉʊʌɯɤøœɶʏɵɚɝᵻ")
 _MULTI = sorted(["eɪ", "aɪ", "ɔɪ", "aʊ", "oʊ", "əʊ", "ɪə", "ɛə", "ʊə", "eə", "ɑɪ", "ɒɪ", "ɐʊ", "ei", "ai", "oi", "au",
                  "ou", "ɛj", "ej", "aj", "ɑj", "ɔj", "oj", "uj", "tʃ", "dʒ", "ts", "dz", "tɕ", "dʑ", "ʈʂ", "ɖʐ", "pf", "tʂ"], key=len, reverse=True)
-_DROP = set("ʰʷˠˤ̚ˀ̥̬̩̯̰̤̪̺̻̹̜̟̠̈̽̆̊͡‿͜|‖()[]/-0123456789?^\"")   # aspiration, ties, tone digits...
+# aspiration, ties, tone digits and letters, ejective and breathy marks, what a source puts around a variant
+_DROP = set("ʰʷˠˤ̚ˀ̥̬̩̯̰̤̪̺̻̹̜̟̠̈̽̆̊͡‿͜|‖()[]/-0123456789?^\"˥˦˧˨˩ꜛꜜ↗↘ʼʱⁿᵐᵑ…~;!")
 
 
 @dataclass
@@ -29,15 +30,29 @@ class Phone:
     nasal: bool = False        # combining tilde (French an, on)
     stress: int = 0            # 1 primary, 2 secondary: set on a syllable's first phone by syllabify()
     palatal: bool = False      # ʲ
+    syllabic: bool = False     # n̩ l̩: a consonant that is its syllable (respelled with a vowel before it)
+    glide: bool = False        # ʊ̯ ɪ̯: a vowel that is not a syllable (the second half of a diphthong)
+    cedilla: bool = False      # ç, which clean() leaves as c + a cedilla: respelled kh; compare() reads it as c
 
 
 def _is_vowel(sym: str) -> bool:
     return sym[0] in _VOWEL_CHARS
 
 
+# "ˈniːtʃə, -tʃi", "ˈiːðər; ˈaɪðər", "x or y": a source's list of variants (a comma inside a word is a stress mark)
+_VARIANTS = re.compile(r"\s*(?:[,;]\s+|;|\s+(?:or|~)\s+)")
+# The same sound written another way: ligatures, old or look-alike letters, r-colouring as a hook.
+_SAME = [("ʧ", "tʃ"), ("ʤ", "dʒ"), ("ʦ", "ts"), ("ʣ", "dz"), ("ǝ", "ə"), ("ᵊ", "ə"), ("ε", "ɛ"), ("ɩ", "ɪ"), ("ɷ", "ʊ"),
+         ("ɜ˞", "ɝ"), ("ə˞", "ɚ"), ("˞", "r")]
+
+
 def clean(ipa: str) -> str:
-    """Strip the wrapping /.../ or [...], normalise ɡ/g and r-variants spelled differently by different sources."""
-    s = unicodedata.normalize("NFD", ipa.strip()).strip("/[] ")
+    """Strip the wrapping /.../ or [...], keep the first of several variants, normalise ɡ/g and the letters that
+    different sources spell differently. Tie bars go here, before t͡ʃ is read as t + ʃ."""
+    s = unicodedata.normalize("NFD", _VARIANTS.split(ipa.strip().strip("/[] "), maxsplit=1)[0]).strip("/[] ")
+    s = s.replace("\u0361", "").replace("\u035c", "")
+    for a, b in _SAME:
+        s = s.replace(a, b)
     return s.replace("ɡ", "g").replace("'", "ˈ").replace(",", "ˌ").replace("ɹ", "r").replace(":", "ː")
 
 
@@ -65,6 +80,16 @@ def phones(ipa: str) -> list[list]:
             if c == "ʲ":
                 if toks and isinstance(toks[-1], Phone):
                     toks[-1].palatal = True
+                i += 1
+                continue
+            if c in "\u0329\u032f\u0327":                  # syllabic, non-syllabic, cedilla: only respelling uses them
+                if toks and isinstance(toks[-1], Phone):
+                    if c == "\u0329":
+                        toks[-1].syllabic = not toks[-1].vowel
+                    elif c == "\u032f":
+                        toks[-1].glide = toks[-1].vowel
+                    else:
+                        toks[-1].cedilla = toks[-1].sym == "c"
                 i += 1
                 continue
             if c in _DROP or unicodedata.combining(c):
@@ -141,7 +166,12 @@ _V = {  # vowel -> (closed syllable, open syllable)
     "oʊ": ("oh", "oh"), "əʊ": ("oh", "oh"), "ou": ("oh", "oh"), "ɪə": ("eer", "eer"), "ɛə": ("air", "air"),
     "eə": ("air", "air"), "ʊə": ("oor", "oor"), "ɛj": ("ay", "ay"), "ej": ("ay", "ay"), "aj": ("y", "y"),
     "ɑj": ("y", "y"), "ɔj": ("oy", "oy"), "oj": ("oy", "oy"), "uj": ("ooy", "ooy"),
+    # a vowel + a non-syllabic one (German ɔʏ̯, Mandarin ɑʊ̯), joined by _glides()
+    "ɔʏ": ("oy", "oy"), "ɔy": ("oy", "oy"), "ɔø": ("oy", "oy"), "ɑʊ": ("ow", "ow"), "ɑu": ("ow", "ow"),
+    "ao": ("ow", "ow"), "ɑo": ("ow", "ow"), "ɛɪ": ("ay", "ay"), "ɛi": ("ay", "ay"), "ɔʊ": ("oh", "oh"),
+    "ɤʊ": ("oh", "oh"), "ɐɪ": ("y", "y"), "ae": ("y", "y"), "ui": ("ooy", "ooy"), "uɪ": ("ooy", "ooy"),
 }
+_EYE = {v for v, (c, _) in _V.items() if c == "y"}            # aɪ and its other spellings
 _V_LONG = {"ɔ": "aw", "ɑ": "ah", "a": "ah", "i": "ee", "u": "oo", "ɜ": "ur", "e": "ay", "o": "oh", "ɛ": "eh"}
 _V_R = {"ɛ": "air", "e": "air", "æ": "arr", "ɑ": "ar", "a": "ar", "ɔ": "or", "o": "or", "ɒ": "or", "ɪ": "eer",
         "i": "eer", "ʊ": "oor", "u": "oor", "ʌ": "ur", "ə": "er", "ɜ": "ur", "aɪ": "ire", "aʊ": "our"}
@@ -152,6 +182,9 @@ _C = {
     "ɕ": "sh", "ʂ": "sh", "ʑ": "zh", "ʐ": "zh", "c": "ky", "ɟ": "gy", "g": "g", "ts": "ts", "dz": "dz", "tɕ": "ch",
     "dʑ": "j", "ʈʂ": "ch", "tʂ": "ch", "ɖʐ": "j", "pf": "pf", "ɬ": "hl", "ɦ": "h", "ʋ": "v", "ɥ": "w", "ʍ": "wh",
     "ɱ": "m", "ɳ": "n", "ɭ": "l", "ɻ": "r", "ʈ": "t", "ɖ": "d", "q": "k", "ɢ": "g", "ħ": "h", "ʕ": "", "ʝ": "y",
+    # sounds English has no letter for: the nearest one a voice can read
+    "ɓ": "b", "ɗ": "d", "ɠ": "g", "ʛ": "g", "ʄ": "j", "ɴ": "n", "ʟ": "l", "ʜ": "h", "ʙ": "b", "ɧ": "sh", "ɺ": "l",
+    "ɰ": "w", "ɮ": "l", "ⱱ": "v", "ʡ": "", "ʢ": "", "ǀ": "t", "ǃ": "k", "ǂ": "k", "ǁ": "kl", "ʘ": "p",
 }
 
 
@@ -167,7 +200,7 @@ def _vowel(p: Phone, closed: bool, r_follows: bool) -> str:
 
 
 def _consonant(p: Phone, nxt: str) -> str:
-    s = _C.get(p.sym, p.sym)
+    s = "kh" if p.cedilla else _C.get(p.sym, p.sym)         # ç (German ich): kh, not the ky of a plain c
     if s == "g" and nxt[:1] in ("e", "i", "y"):
         s = "gh"                                            # keep it hard: "ghee", not "jee"
     if p.palatal and s and s[-1] != "y":
@@ -209,19 +242,46 @@ def _move_checked(sylls: list[list[Phone]]) -> None:
         b[0].stress = st
 
 
+def _glides(word: list) -> list:
+    """The marks only respelling needs: a syllabic consonant gets a schwa before it (ˈbʌtn̩ -> but-un, not "butn"),
+    and a non-syllabic vowel joins the vowel before it as a diphthong (dɔʏ̯tʃ -> doych) or else reads as y / w."""
+    out = []
+    for t in word:
+        if isinstance(t, Phone) and t.syllabic:
+            out.append(Phone(sym="ə", vowel=True))
+        elif isinstance(t, Phone) and t.glide and t.sym not in _V_GLIDE_KEEP:
+            prev = out[-1] if out and isinstance(out[-1], Phone) else None
+            if prev is not None and prev.vowel and prev.sym + t.sym in _V:
+                out[-1] = Phone(sym=prev.sym + t.sym, vowel=True, nasal=prev.nasal)
+                continue
+            t = Phone(sym="j" if t.sym[0] in "iɪyʏeɛ" else "w", vowel=False)
+        out.append(t)
+    return out
+
+
+_V_GLIDE_KEEP = {v for v in _V if len(v) > 1}                 # aɪ̯ is already one diphthong
+_MAGIC_E = set("bdfklmnptvz")                                 # tyme, styne: the e that keeps the y long
+
+
 def respell_word(word: list, style: str = "plain", name: bool = False) -> str:
-    sylls = syllabify(word)
+    sylls = syllabify(_glides(word))
     _move_checked(sylls)
     parts = []
     for si, syl in enumerate(sylls):
-        out = []
+        out, eye = [], None
         for k, p in enumerate(syl):
             if p.vowel:
                 rest = syl[k + 1:]
                 closed = any(not q.vowel for q in rest)
                 r_next = bool(rest) and rest[0].sym == "r" and (len(rest) > 1 or si == len(sylls) - 1 or
                                                                   not sylls[si + 1] or not sylls[si + 1][0].vowel)
-                out.append(_vowel(p, closed, r_next))
+                v = _vowel(p, closed, r_next)
+                if v == "y" and p.sym in _EYE:                 # aɪ: "y" reads as a vowel only after a consonant
+                    if not "".join(out):
+                        v = "eye"                              # Wikipedia's key: EYE-luh
+                    elif len(rest) == 1:
+                        eye = len(out) + 1                     # one closing consonant: it may need help (below)
+                out.append(v)
                 if r_next:
                     syl[k + 1] = Phone(sym="", vowel=False)    # the r went into the vowel's spelling
             else:
@@ -230,7 +290,9 @@ def respell_word(word: list, style: str = "plain", name: bool = False) -> str:
                     q = syl[k + 1]
                     nxt = _vowel(q, any(not x.vowel for x in syl[k + 2:]), False)
                 out.append(_consonant(p, nxt) if p.sym else "")
-        s = "".join(out)
+        if eye is not None and eye < len(out):                 # "tym" reads "tim": write tyme, nyss (Wikipedia's TYME)
+            out[eye] += "s" if out[eye] == "s" else "e" if out[eye] in _MAGIC_E else ""
+        s = re.sub(r"[^A-Za-z]", "", "".join(out))             # a symbol with no letter is left out, not read out
         last = next((q.sym for q in reversed(syl) if q.sym), "")
         if last in ("s", "f") and re.fullmatch(r"[^aeiouy]?[aeiou][sf]", s.lower()):
             s += s[-1]                     # "of" reads "uv" and "is" reads "iz": write off, iss (Wikipedia's ss rule)
@@ -247,7 +309,7 @@ def respell_word(word: list, style: str = "plain", name: bool = False) -> str:
 def respell(ipa: str, style: str = "plain", name: bool = False) -> str:
     """IPA -> a respelling a plain-text TTS reads. style "plain" (Seg-eh-dee) or "stress" (SEG-eh-dee); name=True
     capitalises each word's first letter."""
-    return " ".join(respell_word(w, style, name) for w in phones(ipa))
+    return " ".join(w for w in (respell_word(w, style, name) for w in phones(ipa)) if w)
 
 
 def candidates(ipa: str, name: bool = False) -> list[str]:
@@ -373,8 +435,8 @@ def compare(target_ipa: str, heard) -> Comparison:
     score says whether the target was said, not what surrounds it."""
     t, h = units(target_ipa), units(heard)
     n, m = len(t), len(h)
-    if not n:
-        return Comparison(1.0, target_ipa, " ".join(u[0] for u in h), "")
+    if not n:                                              # no target to hold the take to: that is no match
+        return Comparison(0.0, target_ipa, " ".join(u[0] for u in h), "")
     INF = float("inf")
     D = [[0.0] * (m + 1)] + [[INF] * (m + 1) for _ in range(n)]
     B = [[None] * (m + 1) for _ in range(n + 1)]
@@ -405,3 +467,86 @@ def compare(target_ipa: str, heard) -> Comparison:
     full = sum(_indel(u) for u in t)
     return Comparison(score=round(max(0.0, 1 - cost / full), 3), target=" ".join(u[0] for u in t),
                       heard=" ".join(u[0] for u in h[start:end]), diff=" ".join(reversed(ops)))
+
+
+def hard_errors(diff: str) -> int:
+    """Clear substitutions (!) and missing non-weak sounds (-x) in a compare() diff."""
+    n = 0
+    for op in diff.split():
+        if "!" in op:
+            n += 1
+        elif op.startswith("-") and op[1:] not in _WEAK:
+            n += 1
+    return n
+
+
+def spot(target_ipa: str, heard: list[str], min_score: float = 0.8, max_hard: int = 0) -> list[dict]:
+    """Every place in `heard` (the phones of a whole recording) that sounds like `target_ipa`: the same distance
+    as compare(), kept for every end point instead of the best one. Returns [{start, end (indices into `heard`),
+    score, hard, target, heard, diff}], best first, never overlapping. A transcript can then be asked what it
+    wrote at those places."""
+    t = units(target_ipa)
+    n = len(t)
+    if not n or not heard:
+        return []
+    cache: dict = {}
+    h, src = [], []
+    for k, ph in enumerate(heard):
+        us = cache.get(ph)
+        if us is None:
+            us = cache[ph] = units([ph])
+        h += us
+        src += [k] * len(us)
+    m = len(h)
+    del_cost = [_indel(u) for u in t]
+    ins_cost = [_indel(u) for u in h]
+    subs: dict = {}
+    prev = [0.0] * (m + 1)                                 # a match may start anywhere: the first row is free
+    back = []
+    for i in range(1, n + 1):
+        ti, d = t[i - 1], del_cost[i - 1]
+        cur = [prev[0] + d] + [0.0] * m
+        row = bytearray(m + 1)                             # 0 substitute, 1 target sound missing, 2 extra sound
+        row[0] = 1
+        for j in range(1, m + 1):
+            hj = h[j - 1]
+            c = subs.get((i, hj))
+            if c is None:
+                c = subs[(i, hj)] = _sub(ti, hj)
+            best, op = prev[j - 1] + c, 0
+            x = prev[j] + d
+            if x < best:
+                best, op = x, 1
+            x = cur[j - 1] + ins_cost[j - 1]
+            if x < best:
+                best, op = x, 2
+            cur[j], row[j] = best, op
+        back.append(row)
+        prev = cur
+    full = sum(del_cost)
+    ends = sorted((j for j in range(1, m + 1) if 1 - prev[j] / full >= min_score), key=lambda j: prev[j])
+    out, used = [], []
+    for end in ends:
+        i, j, ops = n, end, []
+        while i > 0:
+            op = back[i - 1][j]
+            if op == 0:
+                c = _sub(t[i - 1], h[j - 1])
+                ops.append(f"{t[i - 1][0]}{'=' if c == 0 else '~' if c <= 0.35 else '!'}{h[j - 1][0]}")
+                i, j = i - 1, j - 1
+            elif op == 1:
+                ops.append(f"-{t[i - 1][0]}")
+                i -= 1
+            else:
+                ops.append(f"+{h[j - 1][0]}")
+                j -= 1
+        if j >= end or any(a < end and j < b for a, b in used):
+            continue
+        diff = " ".join(reversed(ops))
+        hard = hard_errors(diff)
+        if hard > max_hard:
+            continue
+        used.append((j, end))
+        out.append({"start": src[j], "end": src[end - 1] + 1, "score": round(1 - prev[end] / full, 3), "hard": hard,
+                    "target": " ".join(u[0] for u in t), "heard": " ".join(u[0] for u in h[j:end]), "diff": diff})
+    return out

@@ -55,7 +55,7 @@ class Session:
         checker = self._load("checker", timing)
         t0 = time.perf_counter()
         heard = checker.transcribe(y, sr)
-        by_sound = [p for t in terms if t.ipa for p in (t.said, t.shown)]      # judged by the phoneme ear instead
+        by_sound = [t for t in terms if t.ipa]             # judged by the phoneme ear instead, each where it stands
         score, diff = verify.match(spoken, heard, alt=alt, ignore=by_sound)
         beams = int(v.get("beams") or 1)
         retry = int(v.get("retry_beams") or 0)
@@ -84,6 +84,14 @@ class Session:
                 skip.update(range(a + 1, b))               # a respelling's tail is never scored by its letters
         slipped = verify.slips(spoken, heard, scores, v["slip_score"], v["gone_score"], alt=alt, skip=skip)
         lap("letters", t0)
+        soft = [s for s in slipped if float(s.rsplit("(", 1)[1].rstrip(")")) >= v["gone_score"]]
+        if soft and retry > beams and listener.measured:   # a word is a slip because Whisper wrote another one (a
+            t0 = time.perf_counter()                       # "15" heard as "50"): the surer decoder has the last
+            heard = checker.transcribe(y, sr, beams=retry)  # word on that too, before the take fails on it
+            score, diff = verify.match(spoken, heard, alt=alt, ignore=by_sound)
+            slipped = verify.slips(spoken, heard, scores, v["slip_score"], v["gone_score"], alt=alt, skip=skip)
+            beams = retry
+            timing["transcript"] = round(timing["transcript"] + time.perf_counter() - t0, 2)
 
         if need_ear and listener.measured:
             from .phonemes import word_window
@@ -111,7 +119,8 @@ class Session:
 
         reasons = []
         if not listener.measured:
-            reasons.append("the audio is too short to hold the script (the listener could not align it)")
+            reasons.append(getattr(listener, "note", None) or
+                           "the audio is too short to hold the script (the listener could not align it)")
         if score < v["match_min"]:
             reasons.append(f"transcript match {score:.3f} < {v['match_min']}")
         if slipped and listener.measured:
@@ -136,3 +145,9 @@ class Session:
             "listener_measured": listener.measured, "word_scores": scores, "syllables_per_s": round(rate, 2),
             "speech_seconds": round(seconds, 2), "tone": prosody, "tone_flags": tone_flags, "timing": timing,
         }
+
+    def proof(self, y: np.ndarray, sr: int, transcript, table: dict | None = None, second="whisper") -> dict:
+        """Proofread a transcript against its audio (voicecheck/proof.py). `transcript`: a proof.Doc, or the text."""
+        from . import proof
+        doc = transcript if isinstance(transcript, proof.Doc) else proof.parse(str(transcript))
+        return proof.proofread(self, y, sr, doc, table=table, second=second)

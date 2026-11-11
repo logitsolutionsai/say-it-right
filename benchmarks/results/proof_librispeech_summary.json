@@ -1,0 +1,109 @@
+{
+  "dataset": "LibriSpeech test-clean",
+  "utterances": 150,
+  "audio_minutes": 33.6,
+  "seed": 0,
+  "wall_minutes": 21.3,
+  "modes": {
+    "with_whisper": {
+      "by_error": {
+        "far": {
+          "n": 25,
+          "detected": 1.0,
+          "repaired_high": 0.84,
+          "repaired_medium": 0.84,
+          "repaired_all": 0.84
+        },
+        "near": {
+          "n": 25,
+          "detected": 1.0,
+          "repaired_high": 0.16,
+          "repaired_medium": 0.68,
+          "repaired_all": 0.68
+        },
+        "delete": {
+          "n": 25,
+          "detected": 1.0,
+          "repaired_high": 0.92,
+          "repaired_medium": 0.8,
+          "repaired_all": 0.8
+        },
+        "insert": {
+          "n": 25,
+          "detected": 1.0,
+          "repaired_high": 0.88,
+          "repaired_medium": 0.8,
+          "repaired_all": 0.8
+        },
+        "hallucinate": {
+          "n": 25,
+          "detected": 1.0,
+          "repaired_high": 0.96,
+          "repaired_medium": 0.64,
+          "repaired_all": 0.64
+        }
+      },
+      "clean_transcripts": 25,
+      "clean_reported_clean": 21,
+      "false_alarms_per_1000_words": {
+        "high": 0.18,
+        "medium": 4.35,
+        "all": 6.17
+      },
+      "wer_before": 0.0439,
+      "wer_after_high": 0.0065,
+      "wer_after_medium": 0.0083,
+      "wer_after_all": 0.0083
+    },
+    "letter_ear_only": {
+      "by_error": {
+        "far": {
+          "n": 25,
+          "detected": 1.0,
+          "repaired_high": 0.0,
+          "repaired_medium": 0.28,
+          "repaired_all": 0.28
+        },
+        "near": {
+          "n": 25,
+          "detected": 0.96,
+          "repaired_high": 0.0,
+          "repaired_medium": 0.52,
+          "repaired_all": 0.52
+        },
+        "delete": {
+          "n": 25,
+          "detected": 0.96,
+          "repaired_high": 0.0,
+          "repaired_medium": 0.32,
+          "repaired_all": 0.8
+        },
+        "insert": {
+          "n": 25,
+          "detected": 1.0,
+          "repaired_high": 0.08,
+          "repaired_medium": 0.84,
+          "repaired_all": 0.8
+        },
+        "hallucinate": {
+          "n": 25,
+          "detected": 1.0,
+          "repaired_high": 0.68,
+          "repaired_medium": 0.8,
+          "repaired_all": 0.8
+        }
+      },
+      "clean_transcripts": 25,
+      "clean_reported_clean": 25,
+      "false_alarms_per_1000_words": {
+        "high": 0.0,
+        "medium": 1.09,
+        "all": 3.81
+      },
+      "wer_before": 0.0439,
+      "wer_after_high": 0.0254,
+      "wer_after_medium": 0.0141,
+      "wer_after_all": 0.0111
+    }
+  }
+}

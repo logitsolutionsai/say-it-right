@@ -1,0 +1,13 @@
+schema_version: "1.1"
+name: proofreads-a-transcript
+context:
+  scaffold_script: place-files.sh
+expected_outcome: |
+  meeting.wav (Windows' Zira voice, made by evals/make_fixtures.ps1) says: "Thanks everyone for joining. Siobhan will
+  present the results from 1959. The model is confident in wrong answers, and it goes from zero to two hundred
+  quickly. Christian Szegedy wrote the paper, and Siobhan checked it twice." transcript.txt is a tool's transcript of
+  it with six errors: "Shivon" and "Chevonne" for Siobhan, "Segedi" for Szegedy, "confident and wrong" for
+  "confident in wrong", "zero two hundred" (a dropped "to"), and a closing sentence nobody said ("Thanks for
+  watching, and don't forget to subscribe."). The agent writes a lexicon with Siobhan and Szegedy (with IPA), runs
+  vc.py proof on the recording and the transcript, and delivers a corrected transcript with all six fixed and
+  nothing else changed, saying what it changed and how sure the evidence was.

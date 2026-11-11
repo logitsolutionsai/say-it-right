@@ -1,7 +1,7 @@
 {
   "name": "say-it-right",
-  "description": "Make AI voice-overs say every word right, names included: research pronunciations with sources, render them for any TTS engine, and check each take with three ears (Whisper, a letter model with no language model, and an IPA phone model).",
-  "version": "0.2.0",
+  "description": "Make AI voice-overs say every word right, names included: research pronunciations with sources, render them for any TTS engine, and check each take with three ears (Whisper, a letter model with no language model, and an IPA phone model). The same ears proofread any tool's transcript or captions against the recording.",
+  "version": "0.3.0",
   "author": {
     "name": "logitsolutionsai",
     "email": "logitsolutionsai@gmail.com"
@@ -9,13 +9,18 @@
   "homepage": "https://github.com/logitsolutionsai/say-it-right",
   "repository": "https://github.com/logitsolutionsai/say-it-right",
   "license": "MIT",
+  "icon": "./.claude-plugin/icon.png",
   "keywords": [
     "tts",
     "text-to-speech",
     "pronunciation",
     "ipa",
     "ssml",
-    "voice-over"
+    "voice-over",
+    "transcript",
+    "subtitles",
+    "speech-to-text",
+    "proofreading"
   ],
   "skills": [
     "./"

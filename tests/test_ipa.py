@@ -50,3 +50,64 @@ def test_syllables_that_spell_real_words_are_doubled():
     assert ipa.respell("ɪˈɒfɛ", name=True) == "Ih-off-eh"          # not "Ih-of-eh", read "uv"
     assert ipa.respell("ˈɪsə") == "iss-uh"                         # not "is-uh", read "iz"
     assert ipa.respell("ˈɪzə") == "iz-uh"                          # a real z stays single
+
+
+# ---- IPA as the sources really write it (bug hunt 2026-11-11)
+
+def test_tie_bars_are_one_sound():
+    assert ipa.respell("t͡ʃɜːrt͡ʃ") == "church"                    # was "tshurtsh"
+    assert ipa.respell("d͜ʒʌd͜ʒ") == "juj"
+    c = ipa.compare("t͡ʃɪp", ["tʃ", "ɪ", "p"])                     # was 0.629 with a missing t: a right take failed
+    assert c.score == 1.0 and hard_errors(c.diff) == 0
+    assert ipa.respell("ˈʧɪp") == "chip" and ipa.compare("ʧɪp", ["tʃ", "ɪ", "p"]).score == 1.0     # the old ligature
+
+
+def test_the_first_of_several_variants_is_the_target():
+    assert ipa.respell("ˈniːtʃə, -tʃi", name=True) == "Nee-chuh"   # was "Nee-chuh Chee"
+    assert ipa.respell("ˈiːðər; ˈaɪðər") == "ee-dher" and ipa.respell("ˈiːðər or ˈaɪðər") == "ee-dher"
+    c = ipa.compare("/ˈniːtʃə, -tʃi/", "ˈniːtʃə")                  # was 0.647 with two sounds "missing"
+    assert c.score == 1.0 and c.target == "n i tʃ ə"
+    assert [u[0] for u in ipa.units("ˌɪntərˈnæʃənəl")][:3] == ["ɪ", "n", "t"]       # ˌ itself is no variant mark
+    assert [u[0] for u in ipa.units("'sɛ,ɡɛdi")] == list("sɛgɛdi")                  # a comma inside a word: stress
+
+
+@pytest.mark.parametrize("ipa_str, want", [
+    ("ŋwiən˧˥", "ngwee-un"),                   # tone letters
+    ("ɕi˥˩ tɕin˥˩ pʰiŋ˧˥", "shee cheen peeng"),
+    ("kʼaːtʼ", "kaht"),                        # ejectives
+    ("bɜ˞d", "burd"),                          # r-colouring written as a hook
+    ("ˈbʌtn̩", "but-un"),                       # a syllabic consonant needs a vowel letter: was "butn"
+    ("ˈlɪtl̩", "lit-ul"),
+    ("ˈbʌtᵊn", "but-un"),
+    ("ˈfʁiːdʁɪç", "freed-rikh"),               # ç is not c + nothing: was "freed-riky"
+    ("dɔʏ̯tʃ", "doych"),                        # a non-syllabic vowel is half a diphthong: was "daw-uuch"
+    ("mɑʊ̯", "mow"),
+    ("xu̯an", "khwahn"),
+    ("taɪm", "tyme"),                          # "tym" reads "tim"
+    ("naɪs", "nyss"),
+    ("ˈaɪnstaɪn", "eyen-styne"),               # Wikipedia's EYEN-styne: was "yn-styn"
+    ("ˈaɪlə", "eye-luh"),
+    ("skaɪ", "sky"),
+    ("ɓa ɗa ǃa", "bah dah kah"),                # sounds with no English letter: the nearest one
+    ("hello!", "hel-loh"),
+    ("ʼ", ""),
+])
+def test_respell_gives_letters_only(ipa_str, want):
+    assert ipa.respell(ipa_str) == want
+    for text in [ipa.respell(ipa_str, "stress", True)] + ipa.candidates(ipa_str, name=True):
+        assert all(c.isascii() and (c.isalpha() or c in "- ") for c in text), text
+
+
+def test_compare_is_unchanged_for_plain_ipa():
+    assert ipa.compare("ʃɪˈvɔːn", ["ʃ", "ɪ", "v", "ɔ", "n"]).score == 1.0
+    assert ipa.compare("ˈsɛɡɛdi", "ˈsɛɡɛdi").score == 1.0
+    assert "!" in ipa.compare("ʃɪˈvɔːn", ["j", "ɑ", "b", "ə", "n"]).diff
+    # the marks that only respelling reads leave the comparison as it was
+    assert [u[0] for u in ipa.units("ˈbʌtn̩")] == ["b", "ʌ", "t", "n"]
+    assert [u[0] for u in ipa.units("mɑʊ̯")] == ["m", "ɑ", "ʊ"]
+    assert [u[0] for u in ipa.units("ɪç")] == ["ɪ", "c"] and ipa.compare("ɪç", ["ɪ", "ç"]).score == 1.0
+    assert [u[0] for u in ipa.units("ŋwiən˧˥")] == ["ŋ", "w", "i", "ə", "n"]        # a tone is no sound to miss
+
+
+def test_an_empty_target_matches_nothing():
+    assert ipa.compare("", "k æ t").score == 0.0 and ipa.compare("/ /", ["k"]).score == 0.0
